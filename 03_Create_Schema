@@ -1,0 +1,12 @@
+USE [Exchange]
+GO
+CREATE SCHEMA [base]
+GO
+CREATE SCHEMA [finance]
+GO
+CREATE SCHEMA [mgmt]
+GO
+CREATE SCHEMA [reports]
+GO
+CREATE SCHEMA [verify]
+GO
