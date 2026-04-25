@@ -1,0 +1,421 @@
+create table Customers (
+CustomerID int primary key identity,
+FirstName nvarchar(30),
+LastName nvarchar(30),
+NationalCode bigint,
+Email nvarchar(50),
+PhoneNumber nvarchar(15),
+RegisterDate datetime
+)
+create table Accounts(
+AccountID int identity primary key,
+CoustomerID int references Customers(CustomerID),
+AccountNnumber nvarchar(30) unique,
+Balance decimal(18,2),
+Currency nvarchar(20),
+CreateDate datetime default getdate()
+)
+
+create table Transactions(
+TransactionID int identity primary key,
+AccountID int references Accounts(AccountID),
+Amount decimal (18,2),
+TransactionType nvarchar(20),
+TransactionDate datetime default getdate(),
+
+)
+
+create table ExchangeRates(
+ExchangeRateID int identity primary key,
+FromCurrency nvarchar(20),
+ToCurrency nvarchar(20),
+Rate decimal(18,2)
+)
+create table Currensies(
+CurrencyID int identity primary key,
+CurrencyName nvarchar(20),
+CurrencyCode nvarchar(10)
+)
+
+create table Branchs(
+BranchID int identity primary key,
+BranchName nvarchar(30),
+Address nvarchar(100)
+)
+
+create table Employees(
+EmployeeID int identity primary key,
+BranchID int references Branchs(BranchID),
+FirstName nvarchar(30),
+LastName nvarchar(30),
+NationalCode bigint,
+Possition nvarchar(30),
+Email nvarchar(50),
+PhoneNumber nvarchar(15),
+HireDate datetime default getdate()
+)
+
+create table Cards(
+CardID int identity primary key,
+CardNumber nvarchar(50) unique,
+AccountID int references Accounts(AccountID),
+ExpireDate date,
+
+)
+
+create table Loans(
+LoanID int identity primary key,
+AccountID int references Accounts(AccountID),
+AmountLoan decimal(18,2),
+IntresteLoan decimal(18,2),
+InstatementCount int
+)
+
+create table Checks(
+CheckID int identity primary key,
+AccountID int references Accounts(AccountID),
+AmountCheck decimal(18,2),
+CheckNumber nvarchar(50),
+IssueDate datetime
+)
+
+create table Countries(
+CountryID int identity primary key,
+CountryName  nvarchar(30)
+)
+
+create table Cities(
+CityID int identity primary key,
+CityName  nvarchar(30),
+CountryID int references Countries(CountryID),
+
+)
+
+create table Users (
+UserID int identity primary key,
+CityID int references Cities(CityID),
+FirstName nvarchar(30),
+LastName nvarchar(30),
+Email nvarchar(50),
+PhoneNumber nvarchar(15),
+Address nvarchar(100),
+RegisterDate datetime default getdate()
+)
+
+alter table Users add HashPassword nvarchar(30)
+
+
+create table Wallets(
+WalletID int identity primary key,
+UserID int references Users(UserID),
+Balance decimal(18,2),
+CreateDate datetime default getdate()
+)
+
+create table UserSessions(
+UserSessionID int identity primary key,
+UserID int references Users(UserID),
+StartSession datetime,
+EndSession datetime
+)
+
+create table UserConfirmCodes(
+UserConfirmCodeID int identity primary key,
+UserID int references Users(UserID),
+Code int,
+ExpireDate datetime
+)
+
+create table Roles(
+RoleID int identity primary key,
+RoleName nvarchar(30)
+)
+
+
+create table UserRoles(
+UserRoleID int identity primary key,
+UserID int references Users(UserID),
+RoleID int references Roles(RoleID)
+)
+
+create table UserLog (
+UserLogID int identity primary key,
+UserID int references Users(UserID),
+CityID int references Cities(CityID),
+FirstName nvarchar(30),
+LastName nvarchar(30),
+UserName nvarchar(30),
+HashPassword nvarchar(30),
+Email nvarchar(50),
+PhoneNumber nvarchar(15),
+Address nvarchar(100),
+createDate datetime default getdate()
+)
+
+create table Departments(
+DepartmentID int identity primary key,
+DepartmentName nvarchar(30),
+PhoneNumber nvarchar(50),
+Address nvarchar(150),
+Email nvarchar(30),
+CityID int references Cities(CityID),
+CountryID int references Countries(CountryID),
+)
+
+create table Notifications(
+NotificationID int identity primary key,
+UserID int references Users(UserID),
+DepartmentID int references Departments(DepartmentID),
+Title nvarchar(20),
+Description nvarchar(100),
+CreateDate datetime default getdate(),
+IsRead bit default 0
+)
+use Exchange
+
+create table CurrencyTypes(
+CurrencyTypeID int identity primary key,
+CurrencyImages varbinary(max),
+Symbol nvarchar(20),
+Formatstring nvarchar(50),
+IsActive bit
+)
+create table SiteSettings(
+SitesettingID int identity primary key,
+Email nvarchar(100),
+Password nvarchar(100),
+Port int,
+CurrencyTypeID int references CurrencyTypes(CurrencyTypeID),
+MainHost nvarchar(100)
+)
+
+create table TransactionBalances(
+TransactionBalanceID int identity primary key,
+CoustomerID int references Customers(CustomerID),
+DepartmentID int references Departments(DepartmentID),
+CurrencyTypeID int references CurrencyTypes(CurrencyTypeID),
+Amount decimal(18,2),
+Createdate datetime ,
+LastCreatedate datetime ,
+
+)
+
+alter table Transactions add ExchangeRateID int references ExchangeRates(ExchangeRateID)
+
+create table DepartmentTransactions(
+DepartmentTransactionID int identity primary key,
+CoustomerID int references Customers(CustomerID),
+DepartmentID int references Departments(DepartmentID),
+TransactionID int references Transactions(TransactionID),
+CurrencyTypeID int references CurrencyTypes(CurrencyTypeID),
+Description nvarchar(100),
+price decimal(18,2),
+CreateDate datetime default getdate()
+)
+
+create table Newses(
+NewsID int identity primary key,
+Title nvarchar(50),
+Sammery nvarchar(100),
+PublishDate datetime,
+Link nvarchar(100),
+ImageURL nvarchar(100)
+)
+
+create table Exchanges(
+ExchangeID int identity primary key,
+CoustomerID int references Customers(CustomerID),
+DepartmentID int references Departments(DepartmentID),
+CurrencyTypeID int references CurrencyTypes(CurrencyTypeID),
+SourcePrice decimal(18,2),
+TargetPrice decimal(18,2),
+Description nvarchar(100),
+Type nvarchar(50),
+CreateDate datetime default getdate()
+)
+
+CREATE TABLE BillRecives(
+BillReciveID INT PRIMARY KEY IDENTITY , 
+Name NVARCHAR(30) , 
+PhoneNumber NVARCHAR(50) , 
+Address NVARCHAR(100) , 
+Description NVARCHAR(100) 
+)
+CREATE TABLE CurrencyTransaction(
+CurrencyTransactionID INT PRIMARY KEY IDENTITY , 
+TransactionID INT FOREIGN KEY REFERENCES Transactions(TransactionID) , 
+CurrencyFrom NVARCHAR(10) , 
+CurrencyTo NVARCHAR(10) , 
+ExchangeRate DECIMAL(8 , 4) , 
+ConvertedAmount DECIMAL(18 , 2 ) , 
+CreateDate DATETIME DEFAULT GETDATE()
+)
+GO
+
+CREATE TABLE Bills(
+BillID INT PRIMARY KEY IDENTITY , 
+CityID INT FOREIGN KEY REFERENCES Cities(CityID) , 
+CountryID INT FOREIGN KEY REFERENCES Countries(CountryID) , 
+Amount DECIMAL(18 , 2) , 
+SourceCustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID) , 
+SourceDepartmentID INT FOREIGN KEY REFERENCES Departments(DepartmentID) , 
+TargetCustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID) , 
+TargetDepartmentID INT FOREIGN KEY REFERENCES Departments(DepartmentID) , 
+Status NVARCHAR(20) , 
+Description NVARCHAR(50) , 
+CreateDate DATETIME DEFAULT GETDATE() , 
+ExchangeID INT FOREIGN KEY REFERENCES Exchanges(ExchangeID)  , 
+CurrencyID INT FOREIGN KEY REFERENCES Currensies (CurrencyID) , 
+CurrencyTypeID INT FOREIGN KEY REFERENCES CurrencyTypes(CurrencyTypeID)
+)
+
+CREATE TABLE Banks(
+BankID INT PRIMARY KEY IDENTITY , 
+BankName NVARCHAR(50) , 
+CityID INT FOREIGN KEY REFERENCES Cities(CityID) , 
+CountryID INT FOREIGN KEY REFERENCES Countries(CountryID) , 
+PhoneNumber NVARCHAR(50) , 
+Address NVARCHAR(200) 
+)
+
+CREATE TABLE [dbo].[BillsLog](
+     BillsLogID INT PRIMARY KEY IDENTITY , 
+	[BillID] [int] NULL ,
+	[CityID] [int] NULL,
+	[CountryID] [int] NULL,
+	[Amount] [decimal](18, 2) NULL,
+	[SourceCustomerID] [int] NULL,
+	[SourceDepartmentID] [int] NULL,
+	[TargetCustomerID] [int] NULL,
+	[TargetDepartmentID] [int] NULL,
+	[Status] [nvarchar](20) NULL,
+	[Description] [nvarchar](50) NULL,
+	[ExchangeID] [int] NULL,
+	[CurrencyID] [int] NULL,
+	[CurrencyTypeID] [int] NULL,
+	updateDate DATETIME)
+GO
+
+create table ExchangeLog(
+ExchangeLogID int identity primary key,
+ExchangeID int ,
+CoustomerID int references Customers(CustomerID),
+DepartmentID int references Departments(DepartmentID),
+CurrencyTypeID int references CurrencyTypes(CurrencyTypeID),
+SourcePrice decimal(18,2),
+TargetPrice decimal(18,2),
+Description nvarchar(100),
+Type nvarchar(50),
+	UpdateDate DATETIME default getdate()
+)
+exec sp_rename 'Accounts.CostomerID','CustomerID','column'
+ALTER TABLE Users ALTER COLUMN HashPassword NVARCHAR(255);
+EXEC sp_rename 'Currensies', 'Currencies';
+
+alter table ExchangeRates add 
+RateDate datetime
+
+CREATE TABLE TransferTypes(
+    TransferTypeID INT IDENTITY PRIMARY KEY,
+    TypeName NVARCHAR(50),        -- 'SWIFT', 'Western Union', 'MoneyGram', 'حواله داخلی'
+    TransferFee DECIMAL(18,2),    -- کارمزد ثابت
+    FeePercentage DECIMAL(5,2),   -- درصد کارمزد
+    MinAmount DECIMAL(18,2),      -- حداقل مبلغ
+    MaxAmount DECIMAL(18,2),      -- حداکثر مبلغ
+    EstimatedTime NVARCHAR(50),   -- '1-2 روز کاری'
+    IsActive BIT DEFAULT 1
+);
+CREATE TABLE TransferLimits(
+    LimitID INT IDENTITY PRIMARY KEY,
+    CustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID),
+    DailyLimit DECIMAL(18,2) DEFAULT 10000,
+    MonthlyLimit DECIMAL(18,2) DEFAULT 50000,
+    SingleTransferLimit DECIMAL(18,2) DEFAULT 5000,
+    LastResetDate DATETIME DEFAULT GETDATE()
+);
+CREATE TABLE Documents(
+    DocumentID INT IDENTITY PRIMARY KEY,
+    CustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID),
+    DocumentType NVARCHAR(30),     -- 'کارت ملی', 'پاسپورت', 'قبض', 'مدارک شغلی'
+    DocumentNumber NVARCHAR(50),
+    DocumentImage VARBINARY(MAX),  -- یا مسیر فایل
+    IssueDate DATE,
+    ExpiryDate DATE,
+    VerificationStatus NVARCHAR(20) DEFAULT 'Pending', -- 'Verified', 'Rejected'
+    UploadDate DATETIME DEFAULT GETDATE()
+);
+-- به جدول Customers
+ALTER TABLE Customers 
+ADD BirthDate DATE NULL,
+    Gender NVARCHAR(1) NULL,      -- 'M' یا 'F'
+    IsVerified BIT DEFAULT 0,
+    VerificationDate DATETIME NULL,
+    CustomerType NVARCHAR(20) DEFAULT 'Regular'; -- 'VIP', 'Regular', 'Corporate'
+
+-- به جدول Transactions
+ALTER TABLE Transactions 
+ADD CommissionAmount DECIMAL(18,2) DEFAULT 0,
+    Profit DECIMAL(18,2) NULL,    -- سود صرافی از این تراکنش
+    IPAddress NVARCHAR(15) NULL;
+
+-- به جدول Employees
+ALTER TABLE Employees 
+ADD UserID INT NULL FOREIGN KEY REFERENCES Users(UserID),
+    Salary DECIMAL(18,2) NULL,
+    CommissionRate DECIMAL(5,2) DEFAULT 0;
+
+-- به جدول Branches
+ALTER TABLE Branchs 
+ADD PhoneNumber NVARCHAR(15) NULL,
+    Email NVARCHAR(50) NULL,
+    ManagerID INT NULL FOREIGN KEY REFERENCES Employees(EmployeeID),
+    IsActive BIT DEFAULT 1;
+
+
+alter table loans add LoanDate datetime default Getdate(),Status nvarchar(20) default 'Active'
+
+
+CREATE TABLE [dbo].[UserLoans](
+	[UserLoanID] [int] IDENTITY(1,1) NOT NULL,
+	[WalletID] [int] foreign key references Wallets(WalletID) NULL,
+	[AmountLoan] [decimal](18, 2) NULL,
+	[IntresteLoan] [decimal](18, 2) NULL,
+	[InstatementCount] [int] NULL,
+	[LoanDate] [datetime] default getdate(),
+	[Status] [nvarchar](20) default 'Active'
+)
+alter table userloans add constraint PK_UserLoanID primary key (UserLoanID)
+
+CREATE TABLE UserLoanInstallments(
+    InstallmentID INT IDENTITY(1,1) PRIMARY KEY,
+    UserLoanID INT FOREIGN KEY REFERENCES UserLoans(UserLoanID) NOT NULL,
+    InstallmentNumber INT NOT NULL, --شماره قسط
+    DueDate DATE NOT NULL, --تاریخ سررسید
+    Amount DECIMAL(18,2) NOT NULL, --مبلغ این قسط
+    PaidAmount DECIMAL(18,2) DEFAULT 0,--مبلغ پرداخت شده
+    PaidDate DATETIME NULL,--تاریخ پرداخت
+    Status NVARCHAR(20) DEFAULT 'Pending', --Pending, Paid, Late, Partial
+    Description NVARCHAR(200) NULL
+)
+
+CREATE TABLE CustomerLoanInstallments(
+    InstallmentID INT IDENTITY(1,1) PRIMARY KEY,
+    CustLoanID INT FOREIGN KEY REFERENCES CustomerLoans(CustLoanID) NOT NULL,
+    InstallmentNumber INT NOT NULL, --شماره قسط
+    DueDate DATE NOT NULL,--تاریخ سررسید
+    Amount DECIMAL(18,2) NOT NULL,--مبلغ این قسط
+    PaidAmount DECIMAL(18,2) DEFAULT 0,--مبلغ پرداخت شده
+    PaidDate DATETIME NULL,--تاریخ پرداخت
+    Status NVARCHAR(20) DEFAULT 'Pending', --Pending, Paid, Late, Partial
+    Description NVARCHAR(200) NULL
+)
+
+CREATE TABLE CustomerLoans(
+    CustLoanID INT IDENTITY PRIMARY KEY,
+    AccountID INT REFERENCES Accounts(AccountID),
+    AmountLoan DECIMAL(18,2),
+    IntresteLoan DECIMAL(18,2),
+    InstatementCount INT,
+    LoanDate DATETIME DEFAULT GETDATE(),
+    Status NVARCHAR(20) DEFAULT 'Active'
+);
