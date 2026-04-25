@@ -1,0 +1,355 @@
+USE [Exchange]
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+create view [dbo].[Vw_CustLoanInstallmentDetails]
+as
+select 
+cli.CustLoanID,
+a.AccountNumber,
+c.FirstName + ' ' + c.LastName as CustomerName,
+c.NationalCode,
+cl.AmountLoan,
+cl.InstatementCount,
+cli.InstallmentNumber,
+cli.DueDate,
+cli.Amount,
+cli.PaidDate,
+cli.Status,
+case 
+ when cli.Status = 'Late' then DATEDIFF(DAY,cli.DueDate,GETDATE())
+ else 0
+end 'DaysLate',
+cli.Description
+from
+CustomerLoanInstallments cli
+inner join 
+CustomerLoans cl on cli.CustLoanID = cl.CustLoanID
+inner join 
+Accounts a on cl.AccountID = a.AccountID
+inner join 
+Customers c on a.CustomerID = c.CustomerID
+
+GO
+create view [dbo].[Vw_UserLoanInstallmentDetails]
+as
+select 
+uli.UserLoanID,
+w.WalletID,
+u.FirstName + ' ' + u.LastName as UserName,
+u.Email,
+ul.AmountLoan,
+ul.InstatementCount,
+uli.InstallmentNumber,
+uli.DueDate,
+uli.Amount,
+uli.PaidDate,
+uli.Status,
+case 
+ when uli.Status = 'Late' then DATEDIFF(DAY,uli.DueDate,GETDATE())
+ else 0
+end 'DaysLate',
+uli.Description
+from 
+UserLoanInstallments uli
+inner join 
+UserLoans ul on uli.UserLoanID = ul.UserLoanID
+inner join 
+Wallets w on ul.WalletID = w.WalletID
+inner join 
+Users u on w.UserID = u.UserID
+GO
+create view [dbo].[Vw_LateInstallment]
+as 
+select 
+'مشتریان حضوری' as CustomerType,
+vc.CustLoanID LoanID,
+vc.CustomerName FullName,
+vc.InstallmentNumber,
+vc.DueDate,
+vc.Amount,
+vc.DaysLate
+from Vw_CustLoanInstallmentDetails vc
+where vc.status = 'Late'
+union all
+select 
+'کاربران سایت' as CustomerType,
+vu.UserLoanID LoanID,
+vu.UserName FullName,
+vu.InstallmentNumber,
+vu.DueDate,
+vu.Amount,
+vu.DaysLate
+from Vw_UserLoanInstallmentDetails vu 
+where vu.status = 'Late'
+GO
+CREATE   view [dbo].[Vw_CustomerLoanSummary]
+as
+select 
+cl.CustLoanID,
+a.AccountNumber,
+c.FirstName + ' ' +c.LastName as CustomerName,
+c.NationalCode,
+cl.AmountLoan,
+cl.IntresteLoan,
+cl.InstatementCount,
+cl.LoanDate,
+cl.Status
+from CustomerLoans cl
+inner join 
+Accounts a on cl.AccountID = a.AccountID
+inner join 
+Customers c on a.CustomerID = c.CustomerID
+GO
+create view [dbo].[Vw_UserLoanSummary]
+as
+select 
+ul.UserLoanID,
+w.WalletID,
+u.FirstName + ' ' + u.LastName as UserName,
+u.Email,
+ul.AmountLoan,
+ul.IntresteLoan,
+ul.InstatementCount,
+ul.LoanDate,
+ul.Status
+from 
+UserLoans ul
+inner join
+Wallets w on ul.WalletID = w.WalletID
+inner join 
+Users u on w.UserID = u.UserID
+GO
+create view [dbo].[Vw_AllLoanSummary]
+as
+select 
+'مشتریان حضوری' as CustomeType,
+vc.CustLoanID as LoanID,
+vc.CustomerName as FullName,
+vc.AmountLoan,
+vc.InstatementCount,
+vc.IntresteLoan,
+vc.LoanDate,
+vc.Status
+from Vw_CustomerLoanSummary vc
+union all
+select 
+'کاربران سایت' as CustomeType,
+vu.UserLoanID as LoanID,
+vu.UserName as FullName,
+vu.AmountLoan,
+vu.InstatementCount,
+vu.IntresteLoan,
+vu.LoanDate,
+vu.Status
+from Vw_UserLoanSummary vu
+GO
+create   view [dbo].[Vw_AccountDetails]
+as
+select 
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as FullName,
+c.NationalCode,
+c.Email,
+c.PhoneNumber,
+c.CustomerType,
+a.AccountID,
+a.AccountNumber,
+a.Currency,
+a.Balance,
+a.CreateDate
+from 
+Customers c
+inner join 
+Accounts a on c.CustomerID = a.CustomerID
+GO
+create   view [dbo].[Vw_CustomerBalanceSummary]
+as
+select 
+ad.CustomerID,
+ad.FullName,
+ad.NationalCode,
+count(ad.AccountID) as AccountCount,
+sum(case when ad.Currency = 'USD' then ad.Balance else 0 end) as USDBalance,
+sum(case when ad.currency = 'IRR' then ad.balance else 0 end) as IRRBalance,
+sum(case when ad.currency = 'EUR' then ad.balance else 0 end) as EURBalance,
+Format(GETDATE(),'yyyy/mm/dd') as ReportDate
+from Vw_AccountDetails ad
+group by 
+ad.CustomerID,
+ad.FullName,
+ad.NationalCode
+GO
+create   view [dbo].[Vw_ActiveBranch]
+as
+select 
+b.BranchID,
+b.BranchName,
+b.PhoneNumber,
+b.Address,
+case when e.EmployeeID is not null then'دارای مدیر'
+else 'فاقد مدیر'
+end 'ManagerStatus',
+e.EmployeeID,
+e.FirstName + ' ' + e.LastName as ManagerName,
+e.NationalCode,
+e.Possition
+from
+Branchs b
+left join 
+Employees e on b.ManagerID = e.EmployeeID
+where b.IsActive = 1
+GO
+create   view [dbo].[Vw_CustomerCards]
+as
+select 
+c1.CardID,
+c1.CardNumber,
+c1.ExpireDate,
+case 
+ when c1.ExpireDate is null then 'نامشخص'
+ when c1.ExpireDate < GETDATE() then 'منقضی شده'
+ when DATEDIFF(DAY,GETDATE(),c1.ExpireDate) <= 30 then 'در حال انقضا'
+ else 'معتبر'
+end'ExpireStatus',
+a.AccountNumber,
+a.Balance,
+a.Currency,
+c.FirstName + ' ' + c.LastName as CustomerName,
+c.NationalCode,
+c.CustomerType,
+c.PhoneNumber
+from Cards c1
+inner join 
+Accounts a on c1.AccountID = a.AccountID
+inner join 
+Customers c on a.CustomerID = c.CustomerID
+GO
+create   view [dbo].[Vw_CustomerFullInfo]
+as 
+select c.CustomerID,
+c.FirstName + ' ' + c.LastName as FullName,
+c.NationalCode,
+c.PhoneNumber,
+c.Email,
+c.Gender as GenderCode,
+case 
+ when c.Gender = 'm' then 'مرد'
+ when c.Gender = 'f' then 'زن'
+end'GenderName',
+c.IsVerified,
+case 
+ when c.IsVerified = 1 then 'تایید شده'
+ when c.IsVerified = 0 then 'در انتظار'
+ when c.IsVerified is null then 'نامشخص'
+end 'VerificationStatus',
+c.VerificationDate,
+c.CustomerType,
+a.AccountNumber,
+case 
+ when a.AccountNumber is not null then 'دارای حساب'
+ else 'بدون حساب'
+end 'AccountStatus',
+a.Balance,
+a.CreateDate as AcountCreateDate
+from Customers c
+left join 
+Accounts a on c.CustomerID = a.CustomerID
+GO
+create   view [dbo].[Vw_DepartmentInfo]
+as
+select 
+dp.DepartmentID,
+dp.DepartmentName,
+dp.PhoneNumber,
+dp.Email,
+dp.Address,
+c.CountryName,
+case 
+ when c.CountryID is not null then 'دارای کشور'
+ else 'فاقد کشور'
+end 'CountryStatus',
+c1.CityName,
+case 
+ when c1.CityID is not null then 'دارای شهر'
+ else 'فاقد شهر'
+end 'CityStatus'
+from 
+Departments dp
+left join 
+Countries c on dp.CountryID = c.CountryID
+left join Cities c1 on dp.CityID = c1.CityID
+GO
+create   view [dbo].[Vw_EmployeesList]
+as
+select 
+e.EmployeeID,
+e.FirstName + ' ' + e.LastName as FullName ,
+e.NationalCode,
+e.Possition,
+e.HireDate,
+e.Salary,
+case when b.BranchName is not null then b.BranchName 
+else 'برای کارمند شعبه ای وجود ندارد'
+end 'BranchStatus',
+b.BranchName,
+b.Address
+from
+Employees e
+left join 
+Branchs b on e.BranchID = b.BranchID
+GO
+create   view [dbo].[Vw_ExchangeRates]
+as
+select
+ex.ExchangeRateID,
+ex.FromCurrency,
+ex.ToCurrency,
+ex.Rate,
+ex.RateDate
+from ExchangeRates ex
+where ex.IsActive = 1
+GO
+create   view [dbo].[Vw_UserFullInfo]
+as
+select 
+u.UserID,
+u.FirstName + ' ' + u.LastName as FullName,
+u.UserName,
+u.Email,
+c1.CountryName,
+c.CityName,
+u.RegisterDate,
+case 
+ when w.WalletID is not null then 'دارای کیف پول'
+ else 'بدون کیف پول'
+end 'walletStatus',
+w.WalletID,
+w.Balance,
+w.CreateDate
+from Users u
+left join 
+Cities c on u.CityID = c.CityID
+left join 
+Countries c1 on c.CountryID = c1.CountryID
+left join 
+Wallets w on u.UserID = w.UserID
+GO
+create   view [dbo].[Vw_Userwallet]
+as
+select 
+w.WalletID,
+w.Balance,
+case
+ when w.Balance > 0 then 'مثبت'
+ when w.Balance < 0 then 'منفی'
+ else 'صفر'
+end 'BalanceStatus',
+w.CreateDate,
+u.FirstName + ' ' +u.LastName as FullName,
+u.Email,
+u.PhoneNumber
+from Wallets w
+inner join 
+Users u on w.UserID = u.UserID
+GO
