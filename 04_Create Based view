@@ -1,0 +1,280 @@
+USE [Exchange]
+GO
+
+-- =============================================
+-- نمایش جزئیات حساب‌های مشتریان
+-- شامل: اطلاعات مشتری + شماره حساب + موجودی + ارز
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_AccountDetails]
+AS
+SELECT 
+    c.CustomerID,
+    c.FirstName + ' ' + c.LastName AS FullName,
+    c.NationalCode,
+    c.Email,
+    c.PhoneNumber,
+    c.CustomerType,
+    a.AccountID,
+    a.AccountNumber,
+    a.Currency,
+    a.Balance,
+    a.CreateDate
+FROM 
+    Customers c
+    INNER JOIN Accounts a ON c.CustomerID = a.CustomerID;
+GO
+
+-- =============================================
+-- خلاصه موجودی مشتریان تفکیک شده بر اساس ارز
+-- شامل: جمع موجودی دلار، ریال، یورو + تعداد حساب‌ها
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_CustomerBalanceSummary]
+AS
+SELECT 
+    ad.CustomerID,
+    ad.FullName,
+    ad.NationalCode,
+    COUNT(ad.AccountID) AS AccountCount,
+    SUM(CASE WHEN ad.Currency = 'USD' THEN ad.Balance ELSE 0 END) AS USDBalance,
+    SUM(CASE WHEN ad.Currency = 'IRR' THEN ad.Balance ELSE 0 END) AS IRRBalance,
+    SUM(CASE WHEN ad.Currency = 'EUR' THEN ad.Balance ELSE 0 END) AS EURBalance,
+    FORMAT(GETDATE(), 'yyyy/MM/dd') AS ReportDate
+FROM 
+    base.Vw_AccountDetails ad
+GROUP BY 
+    ad.CustomerID, ad.FullName, ad.NationalCode;
+GO
+
+-- =============================================
+-- شعب فعال صرافی با مدیرانشان
+-- شامل: اطلاعات شعبه + نام و سمت مدیر
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_ActiveBranch]
+AS
+SELECT 
+    b.BranchID,
+    b.BranchName,
+    b.PhoneNumber,
+    b.Address,
+    CASE WHEN e.EmployeeID IS NOT NULL THEN 'دارای مدیر' ELSE 'فاقد مدیر' END AS ManagerStatus,
+    e.EmployeeID,
+    e.FirstName + ' ' + e.LastName AS ManagerName,
+    e.NationalCode,
+    e.Possition
+FROM 
+    Branchs b
+    LEFT JOIN Employees e ON b.ManagerID = e.EmployeeID
+WHERE 
+    b.IsActive = 1;
+GO
+
+-- =============================================
+-- لیست بانک‌ها با شهر و کشور
+-- شامل: نام بانک + شهر + کشور + تلفن + آدرس
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_BankList]
+AS
+SELECT 
+    b.BankID,
+    b.BankName,
+    c1.CityName,
+    c.CountryName,
+    b.PhoneNumber,
+    b.Address
+FROM 
+    Banks b
+    LEFT JOIN Countries c ON b.CountryID = c.CountryID
+    LEFT JOIN Cities c1 ON b.CityID = c1.CityID;
+GO
+
+-- =============================================
+-- کارت‌های بانکی مشتریان با وضعیت انقضا
+-- شامل: شماره کارت + تاریخ انقضا + وضعیت (معتبر/منقضی/در حال انقضا)
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_CustomerCards]
+AS
+SELECT 
+    c1.CardID,
+    c1.CardNumber,
+    c1.ExpireDate,
+    CASE 
+        WHEN c1.ExpireDate IS NULL THEN 'نامشخص'
+        WHEN c1.ExpireDate < GETDATE() THEN 'منقضی شده'
+        WHEN DATEDIFF(DAY, GETDATE(), c1.ExpireDate) <= 30 THEN 'در حال انقضا'
+        ELSE 'معتبر'
+    END AS ExpireStatus,
+    a.AccountNumber,
+    a.Balance,
+    a.Currency,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    c.NationalCode,
+    c.CustomerType,
+    c.PhoneNumber
+FROM 
+    Cards c1
+    INNER JOIN Accounts a ON c1.AccountID = a.AccountID
+    INNER JOIN Customers c ON a.CustomerID = c.CustomerID;
+GO
+
+-- =============================================
+-- اطلاعات کامل مشتریان با حساب‌هایشان
+-- شامل: مشخصات فردی + وضعیت احراز هویت + وضعیت حساب
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_CustomerFullInfo]
+AS 
+SELECT 
+    c.CustomerID,
+    c.FirstName + ' ' + c.LastName AS FullName,
+    c.NationalCode,
+    c.PhoneNumber,
+    c.Email,
+    c.Gender AS GenderCode,
+    CASE 
+        WHEN c.Gender = 'm' THEN 'مرد'
+        WHEN c.Gender = 'f' THEN 'زن'
+    END AS GenderName,
+    c.IsVerified,
+    CASE 
+        WHEN c.IsVerified = 1 THEN 'تایید شده'
+        WHEN c.IsVerified = 0 THEN 'در انتظار'
+        WHEN c.IsVerified IS NULL THEN 'نامشخص'
+    END AS VerificationStatus,
+    c.VerificationDate,
+    c.CustomerType,
+    a.AccountNumber,
+    CASE 
+        WHEN a.AccountNumber IS NOT NULL THEN 'دارای حساب'
+        ELSE 'بدون حساب'
+    END AS AccountStatus,
+    a.Balance,
+    a.CreateDate AS AccountCreateDate
+FROM 
+    Customers c
+    LEFT JOIN Accounts a ON c.CustomerID = a.CustomerID;
+GO
+
+-- =============================================
+-- اطلاعات دپارتمان‌های صرافی
+-- شامل: نام دپارتمان + شهر + کشور + وضعیت
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_DepartmentInfo]
+AS
+SELECT 
+    dp.DepartmentID,
+    dp.DepartmentName,
+    dp.PhoneNumber,
+    dp.Email,
+    dp.Address,
+    c.CountryName,
+    CASE WHEN c.CountryID IS NOT NULL THEN 'دارای کشور' ELSE 'فاقد کشور' END AS CountryStatus,
+    c1.CityName,
+    CASE WHEN c1.CityID IS NOT NULL THEN 'دارای شهر' ELSE 'فاقد شهر' END AS CityStatus
+FROM 
+    Departments dp
+    LEFT JOIN Countries c ON dp.CountryID = c.CountryID
+    LEFT JOIN Cities c1 ON dp.CityID = c1.CityID;
+GO
+
+-- =============================================
+-- لیست کارمندان با شعبه محل خدمت
+-- شامل: نام کارمند + سمت + حقوق + نام شعبه
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_EmployeesList]
+AS
+SELECT 
+    e.EmployeeID,
+    e.FirstName + ' ' + e.LastName AS FullName,
+    e.NationalCode,
+    e.Possition,
+    e.HireDate,
+    e.Salary,
+    CASE WHEN b.BranchName IS NOT NULL THEN b.BranchName ELSE 'برای کارمند شعبه ای وجود ندارد' END AS BranchStatus,
+    b.BranchName,
+    b.Address
+FROM 
+    Employees e
+    LEFT JOIN Branchs b ON e.BranchID = b.BranchID;
+GO
+
+-- =============================================
+-- نرخ‌های فعال ارز
+-- شامل: ارز مبدا + ارز مقصد + نرخ + تاریخ
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_ExchangeRates]
+AS
+SELECT 
+    ex.ExchangeRateID,
+    ex.FromCurrency,
+    ex.ToCurrency,
+    ex.Rate,
+    ex.RateDate
+FROM 
+    ExchangeRates ex
+WHERE 
+    ex.IsActive = 1;
+GO
+
+-- =============================================
+-- لیست اخبار و اطلاعیه‌های صرافی
+-- شامل: عنوان + خلاصه + تاریخ انتشار + لینک
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_NewsList]
+AS
+SELECT 
+    NewsID,
+    Title,
+    Sammery,
+    PublishDate,
+    Link,
+    ImageURL
+FROM 
+    Newses;
+GO
+
+-- =============================================
+-- اطلاعات کامل کاربران سایت
+-- شامل: نام کاربری + شهر + کشور + وضعیت کیف پول
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_UserFullInfo]
+AS
+SELECT 
+    u.UserID,
+    u.FirstName + ' ' + u.LastName AS FullName,
+    u.UserName,
+    u.Email,
+    c1.CountryName,
+    c.CityName,
+    u.RegisterDate,
+    CASE WHEN w.WalletID IS NOT NULL THEN 'دارای کیف پول' ELSE 'بدون کیف پول' END AS WalletStatus,
+    w.WalletID,
+    w.Balance,
+    w.CreateDate
+FROM 
+    Users u
+    LEFT JOIN Cities c ON u.CityID = c.CityID
+    LEFT JOIN Countries c1 ON c.CountryID = c1.CountryID
+    LEFT JOIN Wallets w ON u.UserID = w.UserID;
+GO
+
+-- =============================================
+-- کیف پول کاربران سایت
+-- شامل: موجودی + وضعیت (مثبت/صفر/منفی)
+-- =============================================
+CREATE OR ALTER VIEW [base].[Vw_UserWallet]
+AS
+SELECT 
+    w.WalletID,
+    w.Balance,
+    CASE 
+        WHEN w.Balance > 0 THEN 'مثبت'
+        WHEN w.Balance < 0 THEN 'منفی'
+        ELSE 'صفر'
+    END AS BalanceStatus,
+    w.CreateDate,
+    u.FirstName + ' ' + u.LastName AS FullName,
+    u.Email,
+    u.PhoneNumber
+FROM 
+    Wallets w
+    INNER JOIN Users u ON w.UserID = u.UserID;
+GO
