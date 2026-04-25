@@ -1,0 +1,438 @@
+USE [Exchange]
+GO
+
+-- =============================================
+-- جزئیات اقساط وام مشتریان حضوری
+-- شامل: شماره قسط + تاریخ سررسید + مبلغ + وضعیت + روزهای تأخیر
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_CustLoanInstallmentDetails]
+AS
+SELECT 
+    cli.CustLoanID,
+    a.AccountNumber,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    c.NationalCode,
+    cl.AmountLoan,
+    cl.InstatementCount,
+    cli.InstallmentNumber,
+    cli.DueDate,
+    cli.Amount,
+    cli.PaidDate,
+    cli.Status,
+    CASE 
+        WHEN cli.Status = 'Late' THEN DATEDIFF(DAY, cli.DueDate, GETDATE())
+        ELSE 0
+    END AS DaysLate,
+    cli.Description
+FROM
+    CustomerLoanInstallments cli
+    INNER JOIN CustomerLoans cl ON cli.CustLoanID = cl.CustLoanID
+    INNER JOIN Accounts a ON cl.AccountID = a.AccountID
+    INNER JOIN Customers c ON a.CustomerID = c.CustomerID;
+GO
+
+-- =============================================
+-- جزئیات اقساط وام کاربران سایت
+-- شامل: شماره قسط + تاریخ سررسید + مبلغ + وضعیت + روزهای تأخیر
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_UserLoanInstallmentDetails]
+AS
+SELECT 
+    uli.UserLoanID,
+    w.WalletID,
+    u.FirstName + ' ' + u.LastName AS UserName,
+    u.Email,
+    ul.AmountLoan,
+    ul.InstatementCount,
+    uli.InstallmentNumber,
+    uli.DueDate,
+    uli.Amount,
+    uli.PaidDate,
+    uli.Status,
+    CASE 
+        WHEN uli.Status = 'Late' THEN DATEDIFF(DAY, uli.DueDate, GETDATE())
+        ELSE 0
+    END AS DaysLate,
+    uli.Description
+FROM 
+    UserLoanInstallments uli
+    INNER JOIN UserLoans ul ON uli.UserLoanID = ul.UserLoanID
+    INNER JOIN Wallets w ON ul.WalletID = w.WalletID
+    INNER JOIN Users u ON w.UserID = u.UserID;
+GO
+
+-- =============================================
+-- گزارش اقساط عقب افتاده (مشتریان + کاربران)
+-- شامل: نوع مشتری + نام + شماره قسط + مبلغ + روزهای تأخیر
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_LateInstallment]
+AS 
+SELECT 
+    'مشتریان حضوری' AS CustomerType,
+    vc.CustLoanID AS LoanID,
+    vc.CustomerName AS FullName,
+    vc.InstallmentNumber,
+    vc.DueDate,
+    vc.Amount,
+    vc.DaysLate
+FROM 
+    finance.Vw_CustLoanInstallmentDetails vc
+WHERE 
+    vc.Status = 'Late'
+
+UNION ALL
+
+SELECT 
+    'کاربران سایت' AS CustomerType,
+    vu.UserLoanID AS LoanID,
+    vu.UserName AS FullName,
+    vu.InstallmentNumber,
+    vu.DueDate,
+    vu.Amount,
+    vu.DaysLate
+FROM 
+    finance.Vw_UserLoanInstallmentDetails vu 
+WHERE 
+    vu.Status = 'Late';
+GO
+
+-- =============================================
+-- خلاصه وام‌های مشتریان حضوری
+-- شامل: مبلغ وام + بهره + تعداد اقساط + تاریخ + وضعیت
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_CustomerLoanSummary]
+AS
+SELECT 
+    cl.CustLoanID,
+    a.AccountNumber,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    c.NationalCode,
+    cl.AmountLoan,
+    cl.IntresteLoan,
+    cl.InstatementCount,
+    cl.LoanDate,
+    cl.Status
+FROM 
+    CustomerLoans cl
+    INNER JOIN Accounts a ON cl.AccountID = a.AccountID
+    INNER JOIN Customers c ON a.CustomerID = c.CustomerID;
+GO
+
+-- =============================================
+-- خلاصه وام‌های کاربران سایت
+-- شامل: مبلغ وام + بهره + تعداد اقساط + تاریخ + وضعیت
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_UserLoanSummary]
+AS
+SELECT 
+    ul.UserLoanID,
+    w.WalletID,
+    u.FirstName + ' ' + u.LastName AS UserName,
+    u.Email,
+    ul.AmountLoan,
+    ul.IntresteLoan,
+    ul.InstatementCount,
+    ul.LoanDate,
+    ul.Status
+FROM 
+    UserLoans ul
+    INNER JOIN Wallets w ON ul.WalletID = w.WalletID
+    INNER JOIN Users u ON w.UserID = u.UserID;
+GO
+
+-- =============================================
+-- گزارش کلی همه وام‌ها (مشتریان + کاربران)
+-- شامل: نوع مشتری + مبلغ + تعداد اقساط + وضعیت
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_AllLoanSummary]
+AS
+SELECT 
+    'مشتریان حضوری' AS CustomerType,
+    vc.CustLoanID AS LoanID,
+    vc.CustomerName AS FullName,
+    vc.AmountLoan,
+    vc.InstatementCount,
+    vc.IntresteLoan,
+    vc.LoanDate,
+    vc.Status
+FROM 
+    finance.Vw_CustomerLoanSummary vc
+
+UNION ALL
+
+SELECT 
+    'کاربران سایت' AS CustomerType,
+    vu.UserLoanID AS LoanID,
+    vu.UserName AS FullName,
+    vu.AmountLoan,
+    vu.InstatementCount,
+    vu.IntresteLoan,
+    vu.LoanDate,
+    vu.Status
+FROM 
+    finance.Vw_UserLoanSummary vu;
+GO
+
+-- =============================================
+-- اطلاعات کامل حواله‌های ارزی
+-- شامل: شهر/کشور + مشتری مبدا/مقصد + دپارتمان مبدا/مقصد + مبلغ + وضعیت
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_BillsFullInfo]
+AS
+SELECT 
+    b.BillID,
+    c.CityName,
+    c1.CountryName,
+    b.Amount,
+    c2.FirstName + ' ' + c2.LastName AS SourceCustomer,
+    dp.DepartmentName AS SourceDepartmentName,
+    c3.FirstName + ' ' + c3.LastName AS TargetCustomer,
+    dp1.DepartmentName AS TargetDepartmentName,
+    b.Status,
+    b.Description,
+    b.CreateDate,
+    e.ExchangeID,
+    cr.CurrencyName,
+    crt.Symbol
+FROM 
+    Bills b
+    INNER JOIN Cities c ON b.CityID = c.CityID
+    INNER JOIN Countries c1 ON b.CountryID = c1.CountryID
+    INNER JOIN Customers c2 ON b.SourceCustomerID = c2.CustomerID
+    INNER JOIN Customers c3 ON b.TargetCustomerID = c3.CustomerID
+    INNER JOIN Departments dp ON b.SourceDepartmentID = dp.DepartmentID
+    INNER JOIN Departments dp1 ON b.TargetDepartmentID = dp1.DepartmentID
+    LEFT JOIN Exchanges e ON b.ExchangeID = e.ExchangeID
+    INNER JOIN Currencies cr ON b.CurrencyID = cr.CurrencyID
+    INNER JOIN CurrencyTypes crt ON b.CurrencyTypeID = crt.CurrencyTypeID;
+GO
+
+-- =============================================
+-- خلاصه چک‌های مشتریان
+-- شامل: شماره چک + مبلغ + تاریخ صدور + شماره حساب + نام مشتری
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_CheckSummary]
+AS
+SELECT 
+    c.CheckID,
+    a.AccountID,
+    a.AccountNumber,
+    c.AmountCheck,
+    c.CheckNumber,
+    c1.FirstName + ' ' + c1.LastName AS CustomerName,
+    c.IssueDate
+FROM 
+    Checks c
+    INNER JOIN Accounts a ON c.AccountID = a.AccountID
+    INNER JOIN Customers c1 ON a.CustomerID = c1.CustomerID;
+GO
+
+-- =============================================
+-- گزارش تبدیل ارز با نرخ
+-- شامل: ارز مبدا + ارز مقصد + نرخ + مبلغ تبدیل شده
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_CurrencyTransaction]
+AS
+SELECT
+    ct.CurrencyTransactionID,
+    t.TransactionID,
+    ct.CurrencyFrom,
+    ct.CurrencyTo,
+    er.Rate,
+    ct.ConvertedAmount,
+    ct.CreateDate
+FROM 
+    CurrencyTransaction ct
+    INNER JOIN Transactions t ON ct.TransactionID = t.TransactionID
+    INNER JOIN ExchangeRates er ON t.ExchangeRateID = er.ExchangeRateID;
+GO
+
+-- =============================================
+-- همه تراکنش‌های مشتریان
+-- شامل: نوع تراکنش (فارسی) + مبلغ + تاریخ + شماره حساب
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_CustomerTransaction]
+AS
+SELECT 
+    t.TransactionID,
+    t.AccountID,
+    a.AccountNumber,
+    c.CustomerID,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    c.NationalCode,
+    t.Amount,
+    t.TransactionType,
+    CASE 
+        WHEN t.TransactionType = 'Deposit' THEN 'واریز'
+        WHEN t.TransactionType = 'Withdraw' THEN 'برداشت'
+        WHEN t.TransactionType = 'Loan Deposit' THEN 'واریز وام'
+        WHEN t.TransactionType = 'Pay Loan' THEN 'پرداخت اقساط وام'
+        WHEN t.TransactionType = 'Exchange' THEN 'تبدیل ارز'
+        ELSE 'سایر'
+    END AS TransactionTypeFa, 
+    t.TransactionDate
+FROM 
+    Transactions t
+    INNER JOIN Accounts a ON t.AccountID = a.AccountID
+    INNER JOIN Customers c ON a.CustomerID = c.CustomerID;
+GO
+
+-- =============================================
+-- تراکنش‌های امروز مشتریان
+-- شامل: نوع تراکنش (فارسی) + مبلغ + تاریخ (فقط امروز)
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_DailyCustomerTransaction]
+AS
+SELECT 
+    t.TransactionID,
+    t.AccountID,
+    a.AccountNumber,
+    c.CustomerID,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    c.NationalCode,
+    t.Amount,
+    t.TransactionType,
+    CASE 
+        WHEN t.TransactionType = 'Deposit' THEN 'واریز'
+        WHEN t.TransactionType = 'Withdraw' THEN 'برداشت'
+        WHEN t.TransactionType = 'Loan Deposit' THEN 'واریز وام'
+        WHEN t.TransactionType = 'Pay Loan' THEN 'پرداخت اقساط وام'
+        WHEN t.TransactionType = 'Exchange' THEN 'تبدیل ارز'
+        ELSE 'سایر'
+    END AS TransactionTypeFa, 
+    t.TransactionDate
+FROM 
+    Transactions t
+    INNER JOIN Accounts a ON t.AccountID = a.AccountID
+    INNER JOIN Customers c ON a.CustomerID = c.CustomerID
+WHERE 
+    CAST(t.TransactionDate AS DATE) = CAST(GETDATE() AS DATE);
+GO
+
+-- =============================================
+-- گزارش تراکنش‌های دپارتمان‌ها
+-- شامل: نام دپارتمان + مشتری + مبلغ تراکنش + درآمد دپارتمان
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_DepartmentTransactionReport]
+AS
+SELECT 
+    dpt.DepartmentTransactionID,
+    dp.DepartmentName,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    dpt.TransactionID,
+    t.Amount AS TransactionAmount,
+    dpt.Description,
+    dpt.Price AS DepartmentIncome,
+    dpt.CreateDate
+FROM
+    DepartmentTransactions dpt
+    INNER JOIN Departments dp ON dpt.DepartmentID = dp.DepartmentID
+    INNER JOIN Customers c ON dpt.CustomerID = c.CustomerID
+    INNER JOIN Transactions t ON dpt.TransactionID = t.TransactionID;
+GO
+
+-- =============================================
+-- تراکنش‌های تبدیل ارز
+-- شامل: نرخ + کارمزد + سود + مبلغ + مشتری
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_ExchangeCustomerTransaction]
+AS
+SELECT 
+    t.TransactionID,
+    t.ExchangeRateID,
+    t.AccountID,
+    a.AccountNumber,
+    c.CustomerID,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    c.NationalCode,
+    t.Amount,
+    t.TransactionType,
+    'تبدیل ارز' AS TransactionTypeFa,
+    t.TransactionDate,
+    t.CommissionAmount,
+    t.Profit
+FROM 
+    Transactions t
+    INNER JOIN Accounts a ON t.AccountID = a.AccountID
+    INNER JOIN Customers c ON a.CustomerID = c.CustomerID
+WHERE 
+    t.TransactionType = 'Exchange';
+GO
+
+-- =============================================
+-- گزارش تبدیل‌های ارزی (جدول Exchanges)
+-- شامل: مشتری + دپارتمان + مبلغ مبدا/مقصد + نوع تبدیل
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_ExchangeReports]
+AS
+SELECT 
+    e.ExchangeID,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    dp.DepartmentName,
+    crt.Symbol,
+    e.SourcePrice,
+    e.TargetPrice,
+    e.Description,
+    e.Type,
+    e.CreateDate
+FROM
+    Exchanges e 
+    INNER JOIN Customers c ON e.CoustomerID = c.CustomerID
+    INNER JOIN Departments dp ON e.DepartmentID = dp.DepartmentID
+    INNER JOIN CurrencyTypes crt ON e.CurrencyTypeID = crt.CurrencyTypeID;
+GO
+
+-- =============================================
+-- گزارش مانده تراکنش‌های مشتریان در دپارتمان‌ها
+-- شامل: مشتری + دپارتمان + مبلغ گردش + تاریخ
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_TransactionBalanceReport]
+AS
+SELECT 
+    tb.TransactionBalanceID,
+    c.FirstName + ' ' + c.LastName AS CustomerName,
+    dp.DepartmentName,
+    tb.Amount,
+    tb.Createdate,
+    tb.LastCreatedate
+FROM 
+    TransactionBalances tb
+    INNER JOIN Customers c ON tb.CoustomerID = c.CustomerID
+    INNER JOIN Departments dp ON tb.DepartmentID = dp.DepartmentID;
+GO
+
+-- =============================================
+-- گزارش پرداخت‌های اقساط کاربران سایت
+-- شامل: کاربر + مبلغ قسط + پرداخت شده + وضعیت (فارسی)
+-- =============================================
+CREATE OR ALTER VIEW [finance].[Vw_UserLoanPayments]
+AS 
+SELECT 
+    uli.InstallmentID,
+    ul.UserLoanID,
+    u.FirstName + ' ' + u.LastName AS UserName,
+    u.Email,
+    u.PhoneNumber,
+    w.WalletID,
+    w.Balance AS WalletBalance,
+    ul.AmountLoan,
+    uli.InstallmentNumber,
+    uli.DueDate,
+    uli.Amount,
+    uli.PaidAmount,
+    uli.PaidDate,
+    uli.Status,
+    CASE 
+        WHEN uli.Status = 'Paid' THEN 'پرداخت شده'
+        WHEN uli.Status = 'Pending' THEN 'در انتظار'
+        WHEN uli.Status = 'Late' THEN 'عقب افتاده'
+        WHEN uli.Status = 'Partial' THEN 'ناقص'
+        ELSE 'نامشخص'
+    END AS StatusFa,
+    uli.Description
+FROM
+    UserLoanInstallments uli
+    INNER JOIN UserLoans ul ON uli.UserLoanID = ul.UserLoanID
+    INNER JOIN Wallets w ON ul.WalletID = w.WalletID
+    INNER JOIN Users u ON w.UserID = u.UserID;
+GO
