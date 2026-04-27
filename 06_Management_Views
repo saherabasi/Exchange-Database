@@ -1,0 +1,201 @@
+-- =============================================
+-- نمایش کاربران با نقش‌هایشان
+-- شامل: نام کاربر + نام نقش
+-- =============================================
+create view mgmt.Vw_UserRolesFull
+as
+select 
+ur.UserRoleID,
+u.FirstName + ' ' + u.LastName as UserFullName,
+u.UserName,
+r.RoleName
+from
+UserRoles ur
+inner join 
+Users u on ur.UserID = u.UserID
+inner join 
+Roles r on ur.RoleID = r.RoleID
+go
+
+-- =============================================
+-- گزارش نشست‌های کاربران (ورود و خروج)
+-- شامل: زمان شروع + زمان پایان نشست
+-- =============================================
+create view mgmt.Vw_UsersessionReport
+as
+select 
+us.UserSessionID,
+u.UserID,
+u.FirstName + ' ' + u.LastName as UserFullName,
+u.UserName,
+us.StartSession,
+us.EndSession
+from 
+UserSessions us 
+inner join 
+users u on us.UserID = u.UserID
+go
+
+-- =============================================
+-- کاربران در انتظار تأیید کد فعال‌سازی
+-- فقط کدهایی که هنوز معتبر هستند (منقضی نشده)
+-- شامل: وضعیت فارسی (معتبر/منقضی شده)
+-- =============================================
+create view mgmt.Vw_PendingVerifications
+as
+select 
+ucc.UserConfirmCodeID,
+u.UserID,
+u.FirstName + ' ' + u.LastName as UserFullName,
+u.UserName,
+ucc.Code,
+ucc.ExpireDate,
+case 
+when ucc.ExpireDate < GETDATE() then 'منقضی شده' 
+else'معتبر'
+end 'ExpireStatusFa'
+from 
+UserConfirmCodes ucc
+inner join 
+Users u on ucc.UserID = u.UserID
+where ucc.ExpireDate > GETDATE()
+go
+
+-- =============================================
+-- گزارش تغییرات پروفایل کاربران (لاگ)
+-- شامل: اطلاعات قدیمی کاربر + شهر + آی‌پی
+-- =============================================
+create view mgmt.Vw_UserLogsReport
+as
+select 
+ul.UserLogID,
+ul.UserID,
+c.CityName,
+ul.FirstName,
+ul.LastName,
+ul.UserName,
+ul.HashPassword,
+ul.Email,
+ul.PhoneNumber,
+ul.Address,
+ul.createDate,
+ul.ClientIP
+from
+UserLog ul 
+left join 
+Cities c on ul.CityID = c.CityID
+go
+
+
+----------------------------------------
+-- اضافه کردن ستون نوع اعلان به جدول اعلان‌ها
+----------------------------------------
+alter table notifications add NotificationType nvarchar(20)
+
+----------------------------------------
+
+-- =============================================
+-- لیست اعلان‌های کاربران
+-- شامل: نوع اعلان + وضعیت خوانده‌شده (فارسی)
+-- =============================================
+create view mgmt.Vw_NotificationsList
+as
+select 
+n.NotificationID,
+u.UserID,
+u.UserName,
+dp.DepartmentID,
+dp.DepartmentName,
+n.NotificationType,
+n.Title,
+n.Description,
+n.CreateDate,
+n.IsRead,
+case 
+when n.Isread = 1 then'خوانده شده'
+else 'نخوانده'
+end'IsReadStatusFa'
+from
+Notifications n
+left join
+users u on n.UserID = u.UserID
+left join 
+Departments dp on n.DepartmentID = dp.DepartmentID
+go
+
+-- =============================================
+-- گزارش تغییرات تبدیل‌های ارزی (لاگ)
+-- شامل: نام مشتری + نام دپارتمان + قیمت مبدا/مقصد
+-- =============================================
+create view mgmt.Vw_ExchangeLogReport
+as
+select 
+el.ExchangeLogID,
+el.ExchangeID,
+el.CoustomerID,
+c.FirstName + ' ' + c.LastName as CustomerName,
+el.DepartmentID,
+dp.DepartmentName,
+el.SourcePrice,
+el.TargetPrice,
+el.Description,
+el.Type,
+el.UpdateDate
+from
+ExchangeLog el
+inner join 
+Customers c on el.CoustomerID = c.CustomerID
+left join 
+Departments dp on el.DepartmentID = dp.DepartmentID
+go
+
+-- =============================================
+-- گزارش تغییرات حواله‌ها (لاگ)
+-- شامل: همه ستون‌های اصلی حواله + تاریخ بروزرسانی
+-- =============================================
+create or alter view mgmt.Vw_BillsLogReport
+as
+select
+    BillsLogID,
+    BillID,
+    CityID,
+    CountryID,
+    Amount,
+    SourceCustomerID,
+    SourceDepartmentID,
+    TargetCustomerID,
+    TargetDepartmentID,
+    Status,
+    Description,
+    ExchangeID,
+    CurrencyID,
+    CurrencyTypeID,
+    UpdateDate
+from 
+    BillsLog;
+go
+
+-- =============================================
+-- ترکیب اطلاعات تمام مشتریان و کاربران
+-- شامل: نوع شخص + نام + ایمیل + شماره تماس + تاریخ ثبت‌نام
+-- =============================================
+create view mgmt.Vw_AllUserAndCustomerInfo
+as 
+select 
+'مشتری حضوری' as UserType,
+c.CustomerID as ID,
+c.FirstName + ' ' + c.LastName as FullName,
+c.Email,
+c.PhoneNumber,
+c.RegisterDate
+from Customers c
+union all
+select 
+'کاربر سایت' as UserType,
+u.UserID as ID,
+u.FirstName + ' ' + u.LastName as FullName,
+u.Email,
+u.PhoneNumber,
+u.RegisterDate
+from Users u
+go
