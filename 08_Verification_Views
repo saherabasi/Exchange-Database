@@ -1,0 +1,94 @@
+-- =============================================
+-- وضعیت مدارک مشتریان
+-- شامل: نوع مدرک + تاریخ انقضا + وضعیت فارسی (معتبر/منقضی/در حال انقضا)
+-- =============================================
+create or alter view verify.Vw_DocumentStatus
+as
+select 
+d.DocumentID,
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as CustomerName,
+d.DocumentType,
+d.DocumentNumber,
+d.DocumentImage,
+d.IssueDate,
+d.ExpireDate,
+case 
+ when d.ExpireDate is null then 'نامشخص'
+ when d.ExpireDate < GETDATE() then 'منقضی شده'
+ when DATEDIFF(day, GETDATE(), d.ExpireDate) < 15 then 'در حال انقضا'
+ else 'معتبر'
+end as ExpireStatusFa,
+d.VerificationStatus,
+d.UploadDate
+from
+Documents d 
+inner join 
+Customers c on d.CustomerID = c.CustomerID
+go
+
+-- =============================================
+-- مشتریان احراز هویت شده با مدارکشان
+-- شامل: نوع مدرک + شماره مدرک + تاریخ احراز
+-- =============================================
+create view verify.Vw_VerifyCustomerWithDoc
+as
+select 
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as CustomerName,
+c.NationalCode,
+c.Email,
+c.PhoneNumber,
+c.VerificationDate,
+d.DocumentType,
+d.DocumentNumber,
+d.DocumentImage
+from Customers c
+inner join 
+Documents d on c.CustomerID = d.CustomerID
+where c.IsVerified = 1
+go
+
+-- =============================================
+-- مشتریان نزدیک به سقف تراکنش (۸۰٪ محدودیت)
+-- شامل: سقف روزانه/ماهانه + مبلغ تراکنش‌های روز/ماه
+-- فقط مشتریانی که از ۸۰٪ سقف عبور کرده‌اند
+-- =============================================
+create or alter view verify.Vw_CustomerNearLimit
+as
+select 
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as CustomerName,
+c.NationalCode,
+c.Email,
+tl.DailyLimit,
+tl.MonthlyLimit,
+tl.SingleTransferLimit,
+SUM(case 
+when t.TransactionType = 'Transfer' and cast(t.TransactionDate as date) = cast(getdate() as date) 
+then t.Amount else 0 end) as DailyAmount,
+SUM(case
+when t.TransactionType = 'Transfer' and year(t.TransactionDate) = year(GETDATE()) and MONTH(t.TransactionDate) = MONTH(GETDATE())
+then t.Amount else 0 end) as MonthlyAmount
+from
+Customers c
+inner join TransferLimits tl on c.CustomerID = tl.CustomerID
+inner join Accounts a on c.CustomerID = a.CustomerID
+inner join Transactions t on a.AccountID = t.AccountID
+group by 
+c.CustomerID,
+c.FirstName + ' ' + c.LastName,
+c.NationalCode,
+c.Email,
+tl.DailyLimit,
+tl.MonthlyLimit,
+tl.SingleTransferLimit
+having
+SUM(case 
+when t.TransactionType = 'Transfer' and cast(t.TransactionDate as date) = cast(getdate() as date) 
+then t.Amount else 0 end) >= (tl.DailyLimit * 0.8)
+or
+SUM(case
+when t.TransactionType = 'Transfer' and year(t.TransactionDate) = year(GETDATE()) and MONTH(t.TransactionDate) = MONTH(GETDATE())
+then t.Amount else 0 end) >= (tl.MonthlyLimit * 0.8)
+go
