@@ -1,0 +1,61 @@
+-- =============================================
+-- گزارش سود روزانه صرافی (فقط تراکنش‌های امروز)
+-- شامل: مبلغ تراکنش + کارمزد + سود
+-- =============================================
+create view reports.Vw_DailyProfitReport
+as
+select 
+t.TransactionID,
+t.AccountID,
+t.Amount,
+t.TransactionType,
+t.TransactionDate,
+t.CommissionAmount,
+t.Profit
+from Transactions t
+where t.Profit is not null and cast(t.TransactionDate as date) = cast(GETDATE() as date)
+go
+
+-- =============================================
+-- ۱۰ مشتری برتر از نظر سودآوری برای صرافی
+-- شامل: مجموع تراکنش‌ها + مجموع سود
+-- =============================================
+create view reports.Vw_TopCustomer
+as
+select top(10) 
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as CustomerName,
+c.NationalCode,
+c.CustomerType,
+sum(t.Amount) as TotalAmount,
+sum(t.Profit) as TotalProfit
+from Transactions t
+inner join 
+Accounts a on t.AccountID = a.AccountID
+inner join 
+Customers c on a.CustomerID = c.CustomerID
+group by 
+c.CustomerID,
+c.FirstName + ' ' + c.LastName,
+c.NationalCode,
+c.CustomerType
+order by TotalProfit desc
+go
+
+-- =============================================
+-- گزارش گردش مالی ماهانه صرافی
+-- شامل: سال + نام ماه + تعداد تراکنش + مجموع مبالغ
+-- =============================================
+create view reports.Vw_MonthlyTurnover
+as
+select
+year(t.TransactionDate) as Year,
+DATENAME(MONTH,t.TransactionDate) as Month,
+COUNT(t.TransactionID) as TransactionCount,
+sum(t.Amount) as TotalTurnover
+from
+Transactions t
+group by 
+year(t.TransactionDate),
+DATENAME(MONTH,t.TransactionDate)
+go
