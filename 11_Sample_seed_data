@@ -1,0 +1,181 @@
+-- =============================================
+-- Seed Data - داده‌های نمونه برای صرافی
+-- =============================================
+
+-- =============================================
+-- Countries
+-- =============================================
+insert into Countries (CountryName) values 
+(N'ایران'),
+(N'امارات متحده عربی'),
+(N'ترکیه'),
+(N'آلمان'),
+(N'کانادا');
+
+-- =============================================
+-- Cities
+-- =============================================
+insert into Cities (CityName, CountryID) values 
+(N'تهران', 1),
+(N'مشهد', 1),
+(N'اصفهان', 1),
+(N'شیراز', 1),
+(N'تبریز', 1),
+(N'دبی', 2),
+(N'استانبول', 3),
+(N'برلین', 4),
+(N'تورنتو', 5),
+(N'کرج', 1);
+
+-- =============================================
+-- Branchs
+-- =============================================
+insert into Branchs (BranchName, Address, PhoneNumber, Email, IsActive) values 
+(N'شعبه ولیعصر', N'تهران، خیابان ولیعصر، پلاک ۱۲۰۰', N'021-12345678', N'valiasr@exchange.com', 1),
+(N'شعبه ونک', N'تهران، میدان ونک، برج نگین', N'021-87654321', N'vanak@exchange.com', 1),
+(N'شعبه کریمخان', N'تهران، خیابان کریمخان زند', N'021-55667788', N'karimkhan@exchange.com', 1);
+
+-- =============================================
+-- Currencies
+-- =============================================
+insert into Currencies (CurrencyName, CurrencyCode) values 
+(N'دلار آمریکا', N'USD'),
+(N'یورو', N'EUR'),
+(N'تومان ایران', N'IRR'),
+(N'لیر ترکیه', N'TRY'),
+(N'درهم امارات', N'AED');
+
+-- =============================================
+-- CurrencyTypes
+-- =============================================
+insert into CurrencyTypes (Symbol, Formatstring, IsActive) values 
+(N'$', N'#,##0.00', 1),
+(N'€', N'#,##0.00', 1),
+(N'﷼', N'#,##0', 1),
+(N'₺', N'#,##0.00', 1),
+(N'د.إ', N'#,##0.00', 1);
+
+-- =============================================
+-- ExchangeRates
+-- =============================================
+insert into ExchangeRates (FromCurrency, ToCurrency, Rate, RateDate, IsActive) values 
+(N'USD', N'IRR', 510000, GETDATE(), 1),
+(N'EUR', N'IRR', 560000, GETDATE(), 1),
+(N'USD', N'EUR', 0.91, GETDATE(), 1),
+(N'TRY', N'IRR', 16000, GETDATE(), 1),
+(N'AED', N'IRR', 138000, GETDATE(), 1);
+
+-- =============================================
+-- Customers
+-- =============================================
+insert into Customers (FirstName, LastName, NationalCode, Email, PhoneNumber, BirthDate, Gender, IsVerified, VerificationDate, CustomerType) values 
+(N'علی', N'رضایی', 1234567890, N'ali.rezaei@email.com', N'09121234567', '1990-03-15', N'm', 1, GETDATE(), N'VIP'),
+(N'مریم', N'احمدی', 2345678901, N'maryam.ahmadi@email.com', N'09131234568', '1992-07-22', N'f', 1, GETDATE(), N'Regular'),
+(N'حسین', N'محمدی', 3456789012, N'hossein@email.com', N'09141234569', '1988-11-30', N'm', 1, GETDATE(), N'VIP'),
+(N'سارا', N'کریمی', 4567890123, N'sara@email.com', N'09151234570', '1995-05-18', N'f', 0, NULL, N'Regular'),
+(N'رضا', N'موسوی', 5678901234, N'reza@email.com', N'09161234571', '1985-01-10', N'm', 1, GETDATE(), N'Regular'),
+(N'زهرا', N'جعفری', 6789012345, N'zahra@email.com', N'09171234572', '1993-09-25', N'f', 1, GETDATE(), N'VIP'),
+(N'امیر', N'قاسمی', 7890123456, N'amir@email.com', N'09181234573', '1991-12-05', N'm', 0, NULL, N'Regular'),
+(N'نرگس', N'نوروزی', 8901234567, N'narges@email.com', N'09191234574', '1994-04-12', N'f', 1, GETDATE(), N'Regular'),
+(N'محمد', N'صادقی', 9012345678, N'mohammad@email.com', N'09201234575', '1987-08-20', N'm', 1, GETDATE(), N'VIP'),
+(N'فاطمه', N'حسینی', 1122334455, N'fatemeh@email.com', N'09211234576', '1996-02-28', N'f', 0, NULL, N'Regular');
+
+-- =============================================
+-- Users
+-- =============================================
+insert into Users (CityID, FirstName, LastName, Email, PhoneNumber, Address, UserName, HashPassword) values 
+(1, N'پیمان', N'اکبری', N'peyman@email.com', N'09351234567', N'تهران، سعادت‌آباد', N'peyman', HASHBYTES('SHA2_256', N'123456' + N'jfb$#^$^ethth&^$%!Y$')),
+(2, N'سحر', N'تقوی', N'sahar@email.com', N'09361234568', N'مشهد، احمدآباد', N'sahar', HASHBYTES('SHA2_256', N'123456' + N'jfb$#^$^ethth&^$%!Y$')),
+(3, N'بابک', N'یزدانی', N'babak@email.com', N'09371234569', N'اصفهان، خیابان چهارباغ', N'babak', HASHBYTES('SHA2_256', N'123456' + N'jfb$#^$^ethth&^$%!Y$')),
+(1, N'ندا', N'شریفی', N'neda@email.com', N'09381234570', N'تهران، شهرک غرب', N'neda', HASHBYTES('SHA2_256', N'123456' + N'jfb$#^$^ethth&^$%!Y$')),
+(4, N'کیان', N'رستمی', N'kian@email.com', N'09391234571', N'شیراز، معالی‌آباد', N'kian', HASHBYTES('SHA2_256', N'123456' + N'jfb$#^$^ethth&^$%!Y$'));
+
+-- =============================================
+-- Wallets
+-- =============================================
+insert into Wallets (UserID, Balance, CreateDate) values 
+(1, 5000000, GETDATE()),
+(2, 2500000, GETDATE()),
+(3, 10000000, GETDATE()),
+(4, 750000, GETDATE()),
+(5, 3000000, GETDATE());
+
+-- =============================================
+-- Accounts
+-- =============================================
+insert into Accounts (CustomerID, AccountNumber, Balance, Currency, CreateDate) values 
+(1, N'USD-1-001', 5000, N'USD', GETDATE()),
+(1, N'IRR-1-002', 250000000, N'IRR', GETDATE()),
+(2, N'USD-2-001', 3000, N'USD', GETDATE()),
+(2, N'EUR-2-002', 2000, N'EUR', GETDATE()),
+(3, N'IRR-3-001', 500000000, N'IRR', GETDATE()),
+(3, N'USD-3-002', 8000, N'USD', GETDATE()),
+(4, N'IRR-4-001', 50000000, N'IRR', GETDATE()),
+(5, N'USD-5-001', 1500, N'USD', GETDATE()),
+(6, N'IRR-6-001', 150000000, N'IRR', GETDATE()),
+(6, N'EUR-6-002', 3500, N'EUR', GETDATE()),
+(7, N'IRR-7-001', 75000000, N'IRR', GETDATE()),
+(8, N'USD-8-001', 2000, N'USD', GETDATE()),
+(9, N'IRR-9-001', 300000000, N'IRR', GETDATE()),
+(9, N'USD-9-002', 10000, N'USD', GETDATE()),
+(10, N'IRR-10-001', 25000000, N'IRR', GETDATE());
+
+-- =============================================
+-- Employees
+-- =============================================
+insert into Employees (BranchID, FirstName, LastName, NationalCode, Possition, Email, PhoneNumber, HireDate, Salary) values 
+(1, N'جعفر', N'خالقی', 1111111111, N'مدیر شعبه', N'jafar@exchange.com', N'09111111111', '2020-01-01', 25000000),
+(1, N'مینا', N'دهقان', 2222222222, N'اپراتور', N'mina@exchange.com', N'09222222222', '2021-03-15', 15000000),
+(2, N'بهرام', N'گودرزی', 3333333333, N'مدیر شعبه', N'bahram@exchange.com', N'09333333333', '2019-06-01', 28000000),
+(2, N'آزاده', N'فلاح', 4444444444, N'اپراتور', N'azadeh@exchange.com', N'09444444444', '2022-01-20', 14000000),
+(3, N'فرهاد', N'ظفری', 5555555555, N'مدیر شعبه', N'farhad@exchange.com', N'09555555555', '2018-09-10', 30000000);
+
+-- =============================================
+-- Transactions
+-- =============================================
+insert into Transactions (AccountID, Amount, TransactionType, TransactionDate, CommissionAmount, Profit) values 
+-- تبدیل ارز
+(1, 100, N'Exchange', DATEADD(DAY, -1, GETDATE()), 25000, 25000),
+(3, 200, N'Exchange', DATEADD(DAY, -2, GETDATE()), 50000, 50000),
+(9, 500, N'Exchange', GETDATE(), 125000, 125000),
+(6, 1000, N'Exchange', DATEADD(DAY, -3, GETDATE()), 250000, 250000),
+-- واریز
+(2, 10000000, N'Deposit', DATEADD(DAY, -1, GETDATE()), 0, NULL),
+(5, 50000000, N'Deposit', GETDATE(), 0, NULL),
+(7, 25000000, N'Deposit', DATEADD(DAY, -2, GETDATE()), 0, NULL),
+-- برداشت
+(8, 500, N'Withdraw', GETDATE(), 0, NULL),
+(10, 25000000, N'Withdraw', DATEADD(DAY, -1, GETDATE()), 0, NULL),
+(11, 10000000, N'Withdraw', DATEADD(DAY, -3, GETDATE()), 0, NULL);
+
+-- =============================================
+-- Cards
+-- =============================================
+insert into Cards (CardNumber, AccountID, ExpireDate, Status) values 
+(N'6104-1234-5678-0001', 1, DATEADD(YEAR, 3, GETDATE()), N'Active'),
+(N'6104-1234-5678-0002', 3, DATEADD(YEAR, 2, GETDATE()), N'Active'),
+(N'6104-1234-5678-0003', 5, DATEADD(YEAR, 4, GETDATE()), N'Active'),
+(N'6104-1234-5678-0004', 7, DATEADD(YEAR, 1, GETDATE()), N'Active'),
+(N'6104-1234-5678-0005', 9, DATEADD(YEAR, 5, GETDATE()), N'Active'),
+(N'6104-1234-5678-0006', 11, DATEADD(MONTH, -1, GETDATE()), N'Expired'),
+(N'6104-1234-5678-0007', 13, DATEADD(YEAR, 2, GETDATE()), N'Active'),
+(N'6104-1234-5678-0008', 15, DATEADD(MONTH, 1, GETDATE()), N'Active');
+
+-- =============================================
+-- CustomerLoans
+-- =============================================
+insert into CustomerLoans (AccountID, AmountLoan, IntresteLoan, InstatementCount, LoanDate, Status) values 
+(1, 50000000, 23, 12, DATEADD(MONTH, -6, GETDATE()), N'Active'),
+(5, 100000000, 23, 24, DATEADD(MONTH, -3, GETDATE()), N'Active'),
+(9, 200000000, 23, 12, DATEADD(MONTH, -12, GETDATE()), N'Active'),
+(15, 75000000, 23, 6, DATEADD(MONTH, -1, GETDATE()), N'Active');
+
+-- =============================================
+-- Notifications
+-- =============================================
+insert into Notifications (UserID, DepartmentID, Title, Description, CreateDate, IsRead, NotificationType) values 
+(1, NULL, N'خوش آمدید', N'به صرافی ما خوش آمدید', GETDATE(), 0, N'User'),
+(2, NULL, N'تأیید حساب', N'حساب شما با موفقیت تأیید شد', GETDATE(), 1, N'User'),
+(NULL, 1, N'تغییر نرخ', N'نرخ دلار امروز بروزرسانی شد', GETDATE(), 0, N'Department'),
+(3, NULL, N'یادآوری', N'اقساط وام شما در راه است', GETDATE(), 0, N'User'),
+(NULL, NULL, N'اطلاعیه', N'فردا کلیه شعب تعطیل است', GETDATE(), 0, N'Public');
