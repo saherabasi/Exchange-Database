@@ -419,3 +419,58 @@ CREATE TABLE CustomerLoans(
     LoanDate DATETIME DEFAULT GETDATE(),
     Status NVARCHAR(20) DEFAULT 'Active'
 );
+------------------------------------------------------------
+-- اصلاحات Accounts
+alter table Accounts add DelFlag bit default 0;
+
+-- اصلاحات Cards
+alter table Cards add Status nvarchar(20) default 'Active';
+
+-- اصلاحات Users
+alter table Users add UserName nvarchar(30) null;
+alter table Users add Deleted bit default 0;
+
+-- اصلاحات UserLog
+alter table UserLog add ClientIP varchar(30) null;
+
+-- اصلاحات ExchangeRates
+alter table ExchangeRates add IsActive bit default 1;
+
+-- اصلاحات Notifications
+alter table Notifications add NotificationType nvarchar(20) null;
+
+-- اصلاحات ExchangeLog
+alter table ExchangeLog add IsActive bit default 1;
+
+-- جداول جدید
+create table AccountLog(
+    AccountLogID int identity primary key,
+    AccountID int foreign key references Accounts(AccountID),
+    ActionType nvarchar(20),
+    OldValue nvarchar(max),
+    NewValue nvarchar(max),
+    Description nvarchar(200),
+    DoneBy nvarchar(50),
+    LogDate datetime default getdate()
+);
+
+create table CardLog(
+    CardLogID int identity primary key,
+    CardID int foreign key references Cards(CardID),
+    CardNumber nvarchar(50),
+    AccountID int foreign key references Accounts(AccountID),
+    ActionType nvarchar(20),
+    LogDate date default getdate()
+);
+
+create table ExchangeRateLog(
+    RateLogID int identity primary key,
+    ExchangeRateID int,
+    FromCurrency nvarchar(20),
+    ToCurrency nvarchar(20),
+    OldRate decimal(18,2),
+    NewRate decimal(18,2),
+    ActionType nvarchar(20),
+    DoneBy nvarchar(50),
+    LogDate datetime default getdate()
+);
