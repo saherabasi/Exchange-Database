@@ -1,0 +1,286 @@
+-- =============================================
+-- محاسبه کارمزد تراکنش
+-- ورودی: مبلغ تراکنش + درصد کارمزد
+-- خروجی: مبلغ کارمزد
+-- =============================================
+create function fn_CalcCommision(
+@Amount decimal(18,2),
+@CommisionRate decimal(5,2))
+returns decimal(18,2)
+as begin
+	return (@Amount * @CommisionRate)/100
+end
+go
+
+-- =============================================
+-- محاسبه مبلغ هر قسط وام
+-- ورودی: مبلغ وام + تعداد اقساط + درصد بهره
+-- خروجی: مبلغ هر قسط
+-- =============================================
+create function fn_GetInstallmentAmount(@Amount decimal(18,2),@InstallmentCount int,@IntrestLoan decimal(5,2))
+returns decimal(18,2)
+as begin
+	declare @intrest decimal(18,2) = (select dbo.fn_CalcCommision(@Amount,@IntrestLoan))
+	If @InstallmentCount = 0 return 0
+	return (@Amount + @intrest) / @InstallmentCount 
+end
+go
+
+-- =============================================
+-- محاسبه سن دقیق از تاریخ تولد
+-- ورودی: تاریخ تولد
+-- خروجی: سن به سال
+-- =============================================
+create or alter function fn_GetAge(@BirthDate date)
+returns int
+as begin
+	return(
+		datediff(YEAR,@BirthDate,getdate()) - 
+		case 
+		when dateadd(year,datediff(YEAR,@BirthDate,getdate()),@BirthDate) > getdate()
+		then 1 else 0 end
+	)
+end
+go
+
+-- =============================================
+-- بررسی وضعیت انقضای کارت بانکی
+-- ورودی: تاریخ انقضا
+-- خروجی: معتبر / منقضی شده / در حال انقضا / نامشخص
+-- =============================================
+create or alter function fn_IsCardExpired(@ExpireDate date)
+returns nvarchar(20)
+as begin
+	if @ExpireDate is null
+	 return 'نامشخص'
+	if (@ExpireDate < GETDATE())
+	 return 'منقضی شده'
+	if DATEDIFF(day,@ExpireDate,GETDATE()) < 30
+	 return 'در حال انقضا'
+	 
+	 return'معتبر'
+end
+go
+
+-- =============================================
+-- محاسبه سود (بهره) وام
+-- ورودی: مبلغ وام + درصد بهره
+-- خروجی: مبلغ سود
+-- =============================================
+create function fn_CalcLoanIntrest(
+@Amount decimal(18,2),
+@Intrest decimal(5,2))
+returns decimal(18,2)
+as begin
+	return (@Amount * @Intrest)/100
+end
+go
+
+-- =============================================
+-- تعداد اقساط باقی‌مانده یک وام
+-- ورودی: شناسه وام
+-- خروجی: تعداد اقساط پرداخت نشده
+-- =============================================
+create or alter function fn_RemainingInstallments(@LoanID int)
+returns int
+as begin 
+return(
+	select COUNT(*) from CustomerLoanInstallments cli 
+	where cli.CustLoanID = @LoanID and cli.Status != 'Paid'
+)
+end
+go
+
+-- =============================================
+-- موجودی کل یک مشتری در یک ارز خاص
+-- ورودی: شناسه مشتری + نوع ارز
+-- خروجی: مجموع موجودی
+-- =============================================
+create or alter function fn_GetCustomerTotalBalnce(@CustomerID int , @Currency nvarchar(20))
+returns decimal(18,2)
+as begin
+return(
+select isnull(sum(a.Balance),0) from Accounts a 
+where a.CustomerID = @CustomerID and a.Currency = @Currency
+)
+end
+go
+
+-- =============================================
+-- آخرین نرخ تبدیل دو ارز
+-- ورودی: ارز مبدا + ارز مقصد
+-- خروجی: آخرین نرخ فعال
+-- =============================================
+create or alter function fn_GetExchangeRate(@FromCurrency nvarchar(20),@ToCurrency nvarchar(20))
+returns decimal(18,2)
+as begin
+return(
+	select top(1) isnull(er.Rate,0) from ExchangeRates er 
+	where FromCurrency = @FromCurrency and ToCurrency = @ToCurrency
+	order by er.RateDate desc
+	)
+end
+go
+
+-- =============================================
+-- سود کل امروز صرافی
+-- ورودی: ندارد
+-- خروجی: جمع سود تمام تراکنش‌های امروز
+-- =============================================
+create function fn_GetDailyProfit()
+returns decimal(18,2)
+as begin
+	return(
+		select isnull(sum(Profit),0) from Transactions 
+		where cast(TransactionDate as date) = cast(GETDATE() as date)
+	)
+end
+go
+
+-- =============================================
+-- مجموع وام‌های فعال یک مشتری
+-- ورودی: شناسه مشتری
+-- خروجی: جمع مبالغ وام‌های فعال
+-- =============================================
+create function fn_GetCustomerTotalLoan(@CustomerID int)
+returns decimal(18,2)
+as begin
+	return(
+		select sum(cl.AmountLoan) 
+		from 
+		CustomerLoans cl
+		inner join
+		Accounts a on cl.AccountID = a.AccountID
+		where a.CustomerID = @CustomerID and cl.Status = 'Active'
+	)
+end
+go
+
+-- =============================================
+-- تعداد اعلان‌های نخوانده یک کاربر
+-- ورودی: شناسه کاربر
+-- خروجی: تعداد اعلان‌های نخوانده
+-- =============================================
+create function fn_GetUserUnreadNotifications(@UserID int)
+returns int
+as begin
+	return(
+		select count(*) from Notifications n
+		where n.UserID = @UserID and n.IsRead != 1
+	)
+end
+go
+
+-- =============================================
+-- تشخیص VIP بودن مشتری بر اساس گردش مالی
+-- ۱۰ مشتری برتر = VIP
+-- ورودی: شناسه مشتری
+-- خروجی: vip هست / vip نیست
+-- =============================================
+create function fn_IsCustomerVIP(@CustomerID int)
+returns nvarchar(20)
+as begin
+	declare @res nvarchar(10) = 'vip نیست '
+	
+	if exists (
+		select 1 from (
+		select top(10)
+		a.CustomerID,
+		sum(Amount) as totalAmount,
+		sum(profit) as totalProfit
+		from Transactions t 
+		inner join Accounts a on t.AccountID = a.AccountID
+		group by CustomerID
+		order by totalAmount desc,totalProfit desc
+		)as top10
+		where top10.CustomerID = @CustomerID
+	)
+	set @res = 'vip هست'
+	return @res
+end
+go
+
+-- =============================================
+-- رتبه‌بندی مشتری (طلایی/نقره‌ای/برنزی/عادی)
+-- بر اساس مجموع تراکنش‌ها
+-- ورودی: شناسه مشتری
+-- خروجی: عنوان رتبه
+-- =============================================
+create function fn_GetCustomerRank(@CustomerID int)
+returns nvarchar(20)
+as begin
+	declare @rank int
+	declare @res nvarchar(20) = 'عضو عادی'
+	;with cte as(
+		select
+		a.CustomerID,
+		sum(t.Amount) as totalAmount,
+		row_number() over (order by sum(t.Amount) desc) as RankNum
+		from
+		Transactions t inner join Accounts a on t.AccountID = a.AccountID
+		GROUP by a.CustomerID
+	)
+	select @rank = RankNum from cte where cte.CustomerID = @CustomerID
+	if @rank between 1 and 3 set @res = 'عضو طلایی'
+	if @rank between 4 and 6 set @res = 'عضو نقره ای'
+	if @rank between 7 and 10 set @res = 'عضو برنزی'
+	return @res
+end
+go
+
+-- =============================================
+-- پراستفاده‌ترین ارز یک مشتری (ناتمام)
+-- ورودی: شناسه مشتری
+-- خروجی: نام ارز
+-- =============================================
+--------------------------ناتمام
+create function fn_GetMustUsedCurrency(@customerID int)
+returns nvarchar(20)
+as begin
+return(
+	select 
+	count(t.TransactionID) as maxused
+	from Transactions t inner join Accounts a on t.AccountID = a.AccountID
+	where a.CustomerID = @customerID 
+	group by a.Currency)
+end
+--------------------------ناتمام
+go
+
+-- =============================================
+-- وضعیت کلی یک وام
+-- ورودی: شناسه وام
+-- خروجی: تسویه شده / عقب افتاده / در حال پرداخت
+-- =============================================
+create function fn_GetLoanStatus(@LoanID int)
+returns nvarchar(20)
+as begin
+	
+	if not exists (select 1 from CustomerLoanInstallments cli where CustLoanID = @LoanID
+	and cli.Status != 'Paid' )
+	return 'تسویه شده'
+
+	if exists (select 1 from CustomerLoanInstallments cli where CustLoanID = @LoanID 
+	and cli.Status = 'Late')
+	return 'عقب افتاده'
+
+	return 'در حال پرداخت'
+end
+go
+
+-- =============================================
+-- جستجوی مشتری با نام یا کد ملی
+-- ورودی: عبارت جستجو
+-- خروجی: جدول مشتریان منطبق
+-- =============================================
+create function fn_SearchCustomer(@SearchTerm nvarchar(30))
+returns table
+as return(
+	select c.CustomerID,c.FirstName,c.LastName,c.NationalCode from Customers c
+	where FirstName like '%' + @SearchTerm + '%'
+	or
+	LastName like '%' + @SearchTerm + '%'
+	or
+	NationalCode like '%' + @SearchTerm + '%'
+)
+go
