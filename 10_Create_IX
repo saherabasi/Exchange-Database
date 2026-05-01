@@ -1,0 +1,33 @@
+-- Transactions
+create nonclustered index IX_Transactions_TransactionDate on Transactions(TransactionDate);
+create nonclustered index IX_Transactions_AccountID on Transactions(AccountID);
+
+-- Customers
+create nonclustered index IX_Customers_NationalCode on Customers(NationalCode);
+
+-- Users
+create nonclustered index IX_Users_UserName on Users(UserName);
+
+-- Accounts
+create nonclustered index IX_Accounts_CustomerID on Accounts(CustomerID);
+
+-- ExchangeRates
+create nonclustered index IX_ExchangeRates_Currencies on ExchangeRates(FromCurrency, ToCurrency, RateDate desc);
+
+-- Notifications
+create nonclustered index IX_Notifications_UserID on Notifications(UserID);
+
+-- Bills
+create nonclustered index IX_Bills_Customers on Bills(SourceCustomerID, TargetCustomerID);
+
+-- Branchs
+create nonclustered index IX_Branchs_Name on Branchs(BranchName);
+
+-- Cards
+create nonclustered index IX_Cards_AccountID on Cards(AccountID, CardNumber);
+
+-- Checks
+create nonclustered index IX_Checks_AccountID on Checks(AccountID, CheckNumber);
+
+-- CustomerLoanInstallments
+create nonclustered index IX_CustomerLoanInstallments_LoanID on CustomerLoanInstallments(CustLoanID);
