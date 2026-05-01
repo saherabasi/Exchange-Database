@@ -292,3 +292,331 @@ as begin
 
 end
 GO
+
+---------------------------------------------------------------------10تاجدید
+
+-- =============================================
+-- بستن حساب بانکی (غیرفعال کردن)
+-- چک می‌کند وام فعال نداشته باشد
+-- =============================================
+create or alter proc ps_CloseAccount
+@AccountId int,
+@DoneBy nvarchar(20) = 'System'
+as begin
+	if exists (select 1 from Accounts a where AccountID = @AccountId)
+	begin
+		if exists (select 1 from CustomerLoans cl where cl.AccountID = @AccountId and cl.Status = 'Active')
+		begin 
+		 select 'حساب مورد نظر وام فعال دارد' as errmassage
+		end
+
+		else
+		begin 
+			update Accounts set DelFlag = 1 where AccountID = @AccountId
+
+			insert into AccountLog(AccountID,ActionType,OldValue,NewValue,Description,DoneBy,LogDate)
+			values(@AccountId,'Close',null,null,'Account Closed.',@DoneBy,GETDATE())
+		end
+	end
+
+	else 
+	begin
+		select 'حسابی با شناسه وارد شده وجود ندارد' as errmassage
+	end
+end
+go
+
+-- =============================================
+-- انتقال وجه بین دو حساب یک مشتری
+-- چک می‌کند هر دو حساب مال یک مشتری و هم‌ارز باشند
+-- =============================================
+create proc sp_TransferMoney
+@FromAccountID int,
+@ToAccountID int,
+@Amount decimal(18,2)
+as begin
+	begin try
+		begin tran
+
+			if exists (select 1 from Accounts where AccountID = @FromAccountID)
+			and exists (select 1 from Accounts where AccountID = @ToAccountID) 
+
+			begin
+			declare @OrginID int = (select CustomerID from Accounts where AccountID = @FromAccountID)
+			declare @DestID int = (select CustomerID from Accounts where AccountID = @ToAccountID)
+			declare @FromCurrency int = (select Currency from Accounts where AccountID = @FromAccountID)
+			declare @ToCurrency int = (select Currency from Accounts where AccountID = @ToAccountID)
+			if (@OrginID = @DestID and @FromCurrency = @ToCurrency)
+			begin					  
+				declare @balance decimal(18,2) = (select Balance from Accounts where AccountID = @FromAccountID)
+				if @balance >= @Amount
+				begin
+					update Accounts set Balance -= @Amount where AccountID = @FromAccountID
+					insert into Transactions(AccountID,Amount,TransactionType,TransactionDate,
+					ExchangeRateID,CommissionAmount,Profit,IPAddress)
+					values(@FromAccountID,@Amount,'Withdraw',getdate(),null,null,null,null)
+
+					update Accounts set Balance += @Amount where AccountID = @ToAccountID
+					insert into Transactions(AccountID,Amount,TransactionType,TransactionDate,
+					ExchangeRateID,CommissionAmount,Profit,IPAddress)
+					values(@ToAccountID,@Amount,'Deposit',getdate(),null,null,null,null)
+		commit
+				end
+				else begin select 'موجودی حساب شما کافی نیست' as errmassage end
+			end
+			else begin select 'حساب ها یا نوع ارز ها یکی نیستند' as errmassage end
+			end
+
+			else begin select 'یکی از شناسه ها اشتباه است' as errmassage end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+go
+
+-- =============================================
+-- صدور کارت بانکی جدید برای حساب
+-- چک می‌کند حساب قبلاً کارت نداشته باشد
+-- =============================================
+create or alter proc sp_AddCard
+@AccountID int
+as begin
+	
+	begin try
+		begin tran
+			if exists (select 1 from Accounts where AccountID = @AccountID)
+			begin
+			if not exists (select 1 from Cards where AccountID = @AccountID)
+			begin 
+				declare @CardNumber nvarchar(50) = cast(@AccountID as nvarchar) + '-' + cast(format(getdate(),'HHmmss') as nvarchar)
+				insert into Cards(CardNumber,AccountID,ExpireDate)
+				values(@CardNumber,@AccountID,DATEADD(YEAR,5,GETDATE()))
+		commit
+			end
+			else begin select 'کارتی برای حساب مد نظر وجود دارد' as errmassage end
+			end
+			else begin select 'حسابی با شناسه وارد شده وجود ندارد' as errmassage end 
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+
+end
+go
+
+-- =============================================
+-- مسدود کردن کارت بانکی
+-- وضعیت کارت را به 'Block' تغییر می‌دهد
+-- =============================================
+create or alter proc sp_BlockCard
+@CardID int
+as begin
+	begin try
+		begin tran
+			if exists (select 1 from cards where CardID = @CardID)
+			begin
+				declare @CardNumber nvarchar(50),@AccountID int
+				select @CardNumber = c.CardNumber ,@AccountID = c.AccountID from Cards c where CardID = @CardID
+				update cards set Status = 'Block' where CardID = @CardID
+				insert into CardLog(CardID,CardNumber,AccountID,ActionType,LogDate)
+				values(@CardID,@CardNumber,@AccountID,'Block',GETDATE())
+		commit
+			end
+
+			else begin select 'کارتی با شناسه وارد شده وجود ندارد' as errmassage end 
+
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+go
+
+-- =============================================
+-- بروزرسانی نرخ ارز
+-- نرخ قدیمی را غیرفعال و نرخ جدید را ثبت می‌کند
+-- =============================================
+create or alter proc sp_UpdateExchangeRate
+@FromCurrency nvarchar(20),
+@ToCurrency nvarchar(20),
+@NewRate decimal(18,2),
+@DoneBy nvarchar(20) = 'System'
+as begin 
+	begin try
+		begin tran
+			if exists (select 1 from ExchangeRates er 
+			where er.FromCurrency = @FromCurrency and er.ToCurrency = @ToCurrency)
+			begin
+				declare @LastRate decimal(18,2) = (select dbo.fn_GetExchangeRate(@FromCurrency,@ToCurrency))
+				update ExchangeRates set IsActive = 0
+				where FromCurrency = @FromCurrency and ToCurrency = @ToCurrency and Rate = @LastRate
+
+				insert into ExchangeRates(FromCurrency,ToCurrency,Rate,RateDate,IsActive)
+				values(@FromCurrency,@ToCurrency,@NewRate,GETDATE(),default)
+
+				declare @ExchangeRateID int = scope_identity()
+				insert into ExchangeRateLog(ExchangeRateID,FromCurrency,ToCurrency,OldRate,NewRate,ActionType,DoneBy,LogDate)
+				values(@ExchangeRateID,@FromCurrency,@ToCurrency,@LastRate,@NewRate,'Updated',@DoneBy,default)
+
+		commit
+			end
+
+			else begin select 'ارز های وارد شده وجود ندارد' as errmassage end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+go
+
+-- =============================================
+-- ارسال اعلان به کاربر یا دپارتمان
+-- حداقل یکی از UserID یا DepartmentID باید پر باشد
+-- =============================================
+create proc sp_AddNotification
+@UserID int,
+@DepartmentID int,
+@Title nvarchar(20),
+@Description nvarchar(100),
+@NotificationType nvarchar(20)
+
+as begin
+	begin try
+		begin tran
+				if (@UserID is null or exists (select 1 from Users where UserID = @UserID))
+				and 
+				(@DepartmentID is null or exists (select 1 from Departments where DepartmentID = @DepartmentID))
+				begin
+					insert into Notifications (UserID,DepartmentID,Title,Description,CreateDate,IsRead,NotificationType)
+					values(@UserID,@DepartmentID,@Title,@Description,default,default,@NotificationType)
+					
+					select 'Notifacation sent' as status,SCOPE_IDENTITY() as NotificationID
+		commit
+				end
+
+				else begin select 'حداقل یکی از شناسه های وارد شده وجود ندارد' as errmassage end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+go
+
+-- =============================================
+-- علامت‌گذاری اعلان به عنوان خوانده شده
+-- =============================================
+create proc sp_MarkNotificationRead
+@NotificationID int
+as begin 
+	if exists (select 1 from Notifications where NotificationID = @NotificationID)
+	begin
+		update Notifications set IsRead = 1 where NotificationID = @NotificationID
+	end
+
+	else begin select 'اعلانی با شناسه زیر یافت نشد' as errmassage end
+end
+go
+
+-- =============================================
+-- ثبت‌نام کاربر جدید سایت
+-- رمز عبور را با SHA256 و Salt هش می‌کند و کیف پول می‌سازد
+-- =============================================
+create proc sp_RegisterUser
+@CityID int,
+@FirstName nvarchar(30),
+@LastName nvarchar(30),
+@Email nvarchar(50),
+@PhoneNumber nvarchar(15),
+@Address nvarchar(100),
+@UserName nvarchar(30),
+@HashPassword nvarchar(255)
+as begin
+
+	if exists (select 1 from Users where Email = @Email and PhoneNumber = @PhoneNumber and UserName = @UserName)
+	begin select 'حسابی با مشخصات وارد شده وجود دارد' as ErrMassage end 
+
+	else
+	begin
+
+	declare @salt nvarchar(20) = 'jfb$#^$^ethth&^$%!Y$'
+	declare @HashedPassword nvarchar(255) = hashbytes('SHA2_256',@HashPassword+@salt)
+		insert into Users (CityID,FirstName,LastName,Email,PhoneNumber,Address,RegisterDate,UserName,HashPassword)
+		values(@CityID,@FirstName,@LastName,@Email,@PhoneNumber,@Address,getdate(),@UserName,@HashedPassword)
+
+		declare @UserID int = scope_identity()
+		insert into Wallets (UserID,Balance,CreateDate) 
+		values(@UserID,0,GETDATE())
+
+	end
+end
+go
+
+-- =============================================
+-- ورود کاربر به سایت
+-- چک کردن نام کاربری و رمز عبور هش شده
+-- =============================================
+create proc sp_LoginUser
+@UserName nvarchar(30),
+@Password nvarchar(255)
+as begin
+	begin try
+		begin tran
+			declare @salt nvarchar(20) = 'jfb$#^$^ethth&^$%!Y$'
+			
+			if exists (select 1 from users 
+			where UserName = @UserName and HashPassword = HASHBYTES('sha2_256',@Password + @salt))
+			begin select 'ورود موفقیت آمیز' as Success 
+			
+		commit
+			end
+			else begin select 'نام کاربری یا رمز عبور اشتباه است' as Faild end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+go
+
+-- =============================================
+-- تغییر رمز عبور کاربر
+-- رمز قدیمی را چک کرده و رمز جدید را جایگزین می‌کند
+-- =============================================
+create proc sp_ChangePassword
+@UserName nvarchar(30),
+@OldPassword nvarchar(255),
+@NewPassword nvarchar(255)
+
+as begin
+
+	begin try
+		begin tran
+			declare @salt nvarchar(20) = 'jfb$#^$^ethth&^$%!Y$'
+			if exists (select 1 from users where 
+			UserName = @UserName and HashPassword = HASHBYTES('sha2_256',@OldPassword + @salt))
+			begin
+				update users set HashPassword = hashbytes('sha2_256',@NewPassword + @salt)
+				where UserName = @UserName
+		commit
+			end
+			else begin select 'نام کاربری یا رمز عبور اشتباه است' as ErrMassage end 
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+go
