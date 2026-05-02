@@ -620,3 +620,235 @@ as begin
 	end catch
 end
 go
+------------------------------------------------------------------------- اپدیت 4 عدد پروسیجر و برطرف کردن چند باگ
+-- =============================================
+-- ثبت‌نام کاربر جدید سایت
+-- اعتبارسنجی تکراری نبودن ایمیل، شماره تماس، نام کاربری و معتبر بودن شهر
+-- رمز عبور با SHA256 و Salt هش می‌شود
+-- کیف پول با موجودی صفر به‌صورت خودکار ایجاد می‌شود
+-- =============================================
+create or alter proc [dbo].[sp_RegisterUser]
+@CityID int,
+@FirstName nvarchar(30),
+@LastName nvarchar(30),
+@Email nvarchar(50),
+@PhoneNumber nvarchar(15),
+@Address nvarchar(100),
+@UserName nvarchar(30),
+@HashPassword nvarchar(255)
+as begin
+	set nocount on
+	begin try
+		begin tran
+
+			if exists (select 1 from Users where Email = @Email)
+				begin 
+					select 'ایمیل وارد شده قبلا استفاده شده' as ErrMassage 
+					rollback
+					return
+				end 
+			if exists (select 1 from Users where PhoneNumber = @PhoneNumber)
+				begin
+					select 'شماره وارد شده قبلا استفاده شده' as ErrMassage 
+					rollback
+					return
+				end 
+			if exists (select 1 from Users where UserName = @UserName)
+				begin
+					select 'نام کاربری وارد شده قبلا استفاده شده' as ErrMassage 
+					rollback
+					return
+				end 
+			if @CityID is not null and not exists (select 1 from Cities where CityID = @CityID)
+				begin
+					begin select 'شهر مورد نظر معتبر نیست' as ErrMassage end 
+					rollback
+					return
+				end
+
+			else begin
+				declare @salt nvarchar(20) = 'jfb$#^$^ethth&^$%!Y$'
+				declare @HashedPassword nvarchar(255) = hashbytes('SHA2_256',@HashPassword+@salt)
+				insert into Users (CityID,FirstName,LastName,Email,PhoneNumber,Address,RegisterDate,UserName,HashPassword)
+				values(@CityID,@FirstName,@LastName,@Email,@PhoneNumber,@Address,getdate(),@UserName,@HashedPassword)
+
+				declare @UserID int = scope_identity()
+				if @UserID is not null (select 1 from Users where UserID = @UserID)
+				begin
+				insert into Wallets (UserID,Balance,CreateDate) 
+				values(@UserID,0,GETDATE())
+				end
+		commit
+				select 'حساب شما با موفقیت ایجاد شد' as status
+			end
+	end try
+
+	begin catch
+		Rollback
+		select ERROR_MESSAGE() as ErrMassage
+	end catch
+end
+GO
+
+-- =============================================
+-- تغییر رمز عبور کاربر
+-- اعتبارسنجی نام کاربری و رمز عبور قدیمی
+-- رمز جدید با SHA256 و Salt هش و جایگزین می‌شود
+-- =============================================
+create or alter proc [dbo].[sp_ChangePassword]
+@UserName nvarchar(30),
+@OldPassword nvarchar(255),
+@NewPassword nvarchar(255)
+
+as begin
+	set nocount on
+	begin try
+		begin tran
+			declare @salt nvarchar(20) = 'jfb$#^$^ethth&^$%!Y$'
+			if exists (select 1 from users where 
+			UserName = @UserName and HashPassword = HASHBYTES('sha2_256',@OldPassword + @salt))
+			begin
+				update users set HashPassword = hashbytes('sha2_256',@NewPassword + @salt)
+				where UserName = @UserName
+		commit
+			select 'رمز عبور با موفقیت تغییر پیدا کرد' as status
+			end
+			else 
+			begin 
+				select 'نام کاربری یا رمز عبور اشتباه است' as ErrMassage
+				rollback
+				return
+			end 
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+GO
+
+-- =============================================
+-- بستن حساب بانکی (غیرفعال کردن)
+-- چک می‌کند حساب وام فعال نداشته باشد
+-- وضعیت DelFlag را ۱ کرده و در AccountLog ثبت می‌کند
+-- =============================================
+create or alter proc [dbo].[ps_CloseAccount]
+@AccountId int,
+@DoneBy nvarchar(20) = 'System'
+as begin
+	set nocount on 
+	begin try
+		begin tran 
+			if exists (select 1 from Accounts a where AccountID = @AccountId)
+			begin
+				if exists (select 1 from CustomerLoans cl where cl.AccountID = @AccountId and cl.Status = 'Active')
+					begin 
+						select 'حساب مورد نظر وام فعال دارد' as errmassage
+						rollback
+						return
+					end
+				else
+				begin 
+					update Accounts set DelFlag = 1 where AccountID = @AccountId
+					insert into AccountLog(AccountID,ActionType,OldValue,NewValue,Description,DoneBy,LogDate)
+					values(@AccountId,'Close',null,null,'Account Closed.',@DoneBy,GETDATE())
+		commit
+					select 'حساب مورد نظر با موفقیت بسته شد' as status
+				end
+			end
+
+			else 
+			begin
+				select 'حسابی با شناسه وارد شده وجود ندارد' as errmassage
+					rollback
+					return
+			end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrMassage
+	end catch
+end
+GO
+
+-- =============================================
+-- تبدیل ارز بین دو حساب
+-- اعتبارسنجی وجود حساب‌ها، نرخ ارز و موجودی کافی
+-- ثبت تراکنش برداشت از مبدا و واریز به مقصد با محاسبه کارمزد
+-- =============================================
+create or alter proc [dbo].[sp_ExchangeCurrency]
+
+@FromAccountID int ,
+@ToAccountID int ,
+@Amount decimal(18,2)
+
+as begin
+	set nocount on 
+	begin try
+		begin tran
+		
+			if exists (select 1 from Accounts where AccountID = @FromAccountID)
+			and
+			exists (select 1 from Accounts where AccountID = @ToAccountID)
+
+			begin
+				declare @FromCurrency nvarchar(20) = (select Currency from Accounts where AccountID = @FromAccountID)
+				declare @ToCurrency nvarchar(20) = (select Currency from Accounts where AccountID = @ToAccountID)
+				declare @ExchangeRateID int
+				declare @rate decimal(18,2)
+
+				select top(1) @rate = rate,@ExchangeRateID = ExchangeRateID from ExchangeRates
+				where FromCurrency = @FromCurrency and ToCurrency = @ToCurrency and IsActive = 1 order by RateDate desc
+				
+				if @rate is null
+				begin
+					SELECT 'نرخ تبدیلی برای این ارزها یافت نشد' AS errMessage;
+					rollback
+					return
+				end
+
+			    declare @Balance decimal(18,2) = (select Balance from Accounts where AccountID = @FromAccountID)
+				if (@Amount <= @Balance)
+				begin
+
+					declare @Commision decimal(5,2) = 0.5
+					declare @TotalAmount decimal(18,2) = (@Amount * @rate)
+					declare @profit decimal(18,2) = dbo.fn_CalcCommision(@TotalAmount,@Commision)
+					declare @finalAmount decimal(18,2) = (@TotalAmount - @profit)
+
+					update Accounts set Balance -= @Amount where AccountID = @FromAccountID
+					update Accounts set Balance += @finalAmount where AccountID = @ToAccountID
+
+					insert into Transactions (AccountID,Amount,TransactionType,TransactionDate,
+					ExchangeRateID,CommissionAmount,Profit,IPAddress)
+					values(@FromAccountID,@Amount,'Exchange',getdate(),@ExchangeRateID,@Commision,null,null)
+
+					insert into Transactions (AccountID,Amount,TransactionType,TransactionDate,
+					ExchangeRateID,CommissionAmount,Profit,IPAddress)
+					values(@ToAccountID,@finalAmount,'Exchange',getdate(),@ExchangeRateID,@Commision,@profit,null)
+
+		commit
+					select 'تراکنش با موفقیت انجام شد' as status
+				end
+				else 
+					begin select 'موجودی کافی نمی باشد' as err
+					rollback
+					return
+				end
+
+			end
+			else  
+				begin select 'یکی از حساب ها اشتباه می باشد' as err
+				rollback
+				return
+			end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as err_massage
+	end catch
+end
+GO
