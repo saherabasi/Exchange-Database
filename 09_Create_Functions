@@ -284,3 +284,43 @@ as return(
 	NationalCode like '%' + @SearchTerm + '%'
 )
 go
+------------------------------------------------------آپدیت فانکشن مجموع وام های مشتری بر اساس نوع ارز
+-- =============================================
+-- دریافت مجموع وام‌های فعال یک مشتری تفکیک‌شده بر اساس ارز
+-- اعتبارسنجی وجود مشتری و بازگرداندن پیام مناسب
+-- خروجی: جدول شامل مجموع وام دلاری، تومانی، یورویی و پیام وضعیت
+-- =============================================
+drop function if exists [dbo].[fn_GetCustomerTotalLoan]
+
+create or alter function fn_GetCustomerTotalLoan(@CustomerID int)
+returns @Result table (
+    TotalLoanUSD decimal(18,2),
+    TotalLoanIRR decimal(18,2),
+    TotalLoanEUR decimal(18,2),
+    Message nvarchar(100)
+)
+as
+begin
+    -- چک کن مشتری وجود داره
+    if not exists (select 1 from Accounts where CustomerID = @CustomerID)
+    begin
+        insert into @Result (TotalLoanUSD, TotalLoanIRR, TotalLoanEUR, Message)
+        values (0, 0, 0, N'مشتری با این شناسه یافت نشد');
+        return;
+    end
+    
+    -- اگه وجود داشت، وام‌هاش رو برگردون
+    insert into @Result (TotalLoanUSD, TotalLoanIRR, TotalLoanEUR, Message)
+    select 
+        isnull(sum(case when a.Currency = 'USD' then cl.AmountLoan else 0 end), 0),
+        isnull(sum(case when a.Currency = 'IRR' then cl.AmountLoan else 0 end), 0),
+        isnull(sum(case when a.Currency = 'EUR' then cl.AmountLoan else 0 end), 0),
+        N'موفقیت‌آمیز'
+    from 
+        CustomerLoans cl
+    inner join Accounts a on cl.AccountID = a.AccountID
+    where a.CustomerID = @CustomerID and cl.Status = 'Active';
+    
+    return;
+end
+GO
