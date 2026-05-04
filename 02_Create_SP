@@ -852,3 +852,277 @@ as begin
 	end catch
 end
 GO
+
+
+-------------------------------------------------------------آپدیت 4 تا پروسیجر دیگه
+-- =============================================
+-- باز کردن حساب بانکی جدید برای مشتری
+-- اعتبارسنجی وجود مشتری و معتبر بودن نوع ارز
+-- شماره حساب به‌صورت خودکار و یکتا تولید می‌شود
+-- =============================================
+create or alter proc [dbo].[sp_OpenAccount]
+@CustomerID int,
+@Currency nvarchar(20),
+@Balance decimal(18,2)
+as begin
+set nocount on 
+
+ begin try
+	begin tran
+
+		if not exists (select 1 from Customers where CustomerID = @CustomerID)
+			begin
+				select 'مشتری با این آیدی یافت نشد' as ErrorMessage
+				rollback
+				return
+			end
+		if not exists (select 1 from Currencies where CurrencyCode = @Currency)
+			begin
+				select 'متاسفانه همچین نوع ارزی رو پشتیبانی نمیکنیم' as ErrorMessage
+				rollback
+				return
+			end
+		else begin	
+			declare @AccNum Nvarchar(30)
+			set @AccNum = @Currency + '-' + cast(@CustomerID as nvarchar) + '-' + cast(FORMAT(GETDATE(),'HHmmss') as nvarchar)
+			insert into Accounts ([CustomerID],[AccountNumber],[Balance],[Currency],[CreateDate])
+			values(@CustomerID,@AccNum,@Balance,@Currency,getdate())
+
+	commit
+			select 'حساب ارزی شما با موفقیت انجام شد' as Status
+		end
+			
+ end try
+
+
+ begin catch
+  rollback
+  select ERROR_MESSAGE() as ErrorMessage
+ end catch
+
+end
+GO
+
+-- =============================================
+-- انتقال وجه بین دو حساب یک مشتری
+-- اعتبارسنجی وجود حساب‌ها، یکسان بودن مشتری و ارز، موجودی کافی
+-- ثبت دو تراکنش (برداشت + واریز) به‌صورت هم‌زمان
+-- =============================================
+create or alter  proc [dbo].[sp_TransferMoney]
+@FromAccountID int,
+@ToAccountID int,
+@Amount decimal(18,2)
+as begin
+	set nocount on
+	begin try
+		begin tran
+
+			if not exists (select 1 from Accounts where AccountID = @FromAccountID)
+				begin 
+					select 'شناسه مبدا اشتباه است' as errmassage 
+					rollback
+					return
+				end
+			if not exists (select 1 from Accounts where AccountID = @ToAccountID) 
+				begin 
+					select 'شناسه مقصد اشتباه است' as errmassage 
+					rollback
+					return
+				end
+
+			else
+				begin
+					declare @OrginID int = (select CustomerID from Accounts where AccountID = @FromAccountID)
+					declare @DestID int = (select CustomerID from Accounts where AccountID = @ToAccountID)
+					declare @FromCurrency nvarchar(20) = (select Currency from Accounts where AccountID = @FromAccountID)
+					declare @ToCurrency nvarchar(20) = (select Currency from Accounts where AccountID = @ToAccountID)
+
+					if (@OrginID != @DestID)
+						begin 
+							select 'حساب مبدا و مقصد باید برای یک مشتری باشه' as errmassage 
+							rollback
+							return
+						end
+					if (@FromCurrency != @ToCurrency)
+						begin 
+							select 'نوع ارز دو حساب مبدا و مقصد باید یکی باشد' as errmassage 
+							rollback
+							return
+						end
+
+					else
+						begin					  
+							declare @balance decimal(18,2) = (select Balance from Accounts where AccountID = @FromAccountID)
+							if @balance >= @Amount
+								begin
+									update Accounts set Balance -= @Amount where AccountID = @FromAccountID
+									insert into Transactions(AccountID,Amount,TransactionType,TransactionDate,
+									ExchangeRateID,CommissionAmount,Profit,IPAddress)
+									values(@FromAccountID,@Amount,'Withdraw',getdate(),null,null,null,null)
+
+									update Accounts set Balance += @Amount where AccountID = @ToAccountID
+									insert into Transactions(AccountID,Amount,TransactionType,TransactionDate,
+									ExchangeRateID,CommissionAmount,Profit,IPAddress)
+									values(@ToAccountID,@Amount,'Deposit',getdate(),null,null,null,null)
+		commit
+									select 'انتقال پول با موفقیت انجام شد' as status
+								end
+								else 
+									begin 
+										select 'موجودی حساب شما کافی نیست' as errmassage 
+										rollback
+										return
+									end
+						end
+				end
+				
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errmassage
+	end catch
+end
+GO
+
+-- =============================================
+-- پرداخت وام به مشتری و ایجاد اقساط خودکار
+-- اعتبارسنجی وجود حساب و تطابق ارز
+-- مبلغ وام به حساب واریز و اقساط به‌صورت خودکار ایجاد می‌شود
+-- =============================================
+create or alter proc [dbo].[sp_IssueCustomerLoan]
+@AccountID int,
+@Amount decimal(18,2),
+@instatmentCount int,
+@Currency nvarchar(20)
+as begin
+	set nocount on
+	begin try
+
+		begin tran
+			
+			if not exists (select 1 from Accounts where AccountID = @AccountID)
+				begin
+					select 'حسابی با این شناسه یافت نشد' as errMassage
+					rollback
+					return
+				end
+			if not exists (select 1 from Accounts where Currency = @Currency)
+				begin
+					select 'نوع ارز وارد شده برای حساب مقصد معتبر نمی باشد' as errMassage
+					rollback
+					return
+				end
+			else
+				begin
+					declare @IntresteLoanPercent decimal(18,2) = 23
+
+					update Accounts set Balance += @Amount where AccountID = @AccountID and Currency = @Currency
+
+					insert into Transactions (AccountID,Amount,TransactionType,TransactionDate,ExchangeRateID,CommissionAmount,Profit,IPAddress)
+					values(@AccountID,@Amount,'Loan Deposit',getdate(),null,null,null,null)
+
+					insert into CustomerLoans(AccountID,AmountLoan,IntresteLoan,InstatementCount,LoanDate,Status)
+					values(@AccountID,@Amount,@IntresteLoanPercent,@instatmentCount,GETDATE(),'Active')
+
+					declare @LoanID int = SCOPE_IDENTITY()
+					declare @intrest decimal(18,2) = dbo.fn_CalcLoanIntrest( @Amount , @IntresteLoanPercent )
+					declare @LoanWithintrest decimal(18,2) = @Amount + @intrest
+					declare @EachAmount decimal(18,2) = @LoanWithintrest / @instatmentCount
+
+					declare @num int = 1
+					while (@num <= @instatmentCount)
+					begin
+						insert into CustomerLoanInstallments(CustLoanID,InstallmentNumber,DueDate,Amount,PaidAmount,
+						PaidDate,Status,Description)
+						values(@LoanID,@num,dateadd(MONTH,@num,GETDATE()),@EachAmount,0,null,'pending','وامی با بهره 23 درصد')
+						set @num += 1
+					end
+				end
+
+		commit
+				select 'وام به حساب مقصد واریز شد' as Status
+				
+
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as err_mass
+	end catch
+
+end
+GO
+
+-- =============================================
+-- پرداخت یک قسط از وام مشتری
+-- اعتبارسنجی وجود وام، شماره قسط و پرداخت نشده بودن قبلی
+-- مبلغ قسط از حساب کم و در تراکنش ثبت می‌شود
+-- وضعیت قسط به Paid تغییر می‌کند
+-- =============================================
+create or alter proc sp_PayInstallment
+
+@CustLoanID int,
+@InstallmentNumber int
+
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from CustomerLoanInstallments where CustLoanID = @CustLoanID)
+				begin
+					select 'همچین شناسه وامی وجود نداره' as ErrMassage
+					rollback
+					return
+				end
+			if not exists (select 1 from CustomerLoanInstallments where CustLoanID = @CustLoanID and InstallmentNumber = @InstallmentNumber )
+				begin
+					select 'همچین قسطی وجود نداره' as ErrMassage
+					rollback
+					return
+				end
+			if exists (select 1 from CustomerLoanInstallments where CustLoanID = @CustLoanID and InstallmentNumber = @InstallmentNumber and Status = 'Paid')
+				begin
+					select 'این قسط قبلا پرداخت شده' as ErrMassage
+					rollback
+					return
+				end
+			else
+				begin
+					declare @balance decimal(18,2)
+					declare @accountID int
+					select @accountID = cl.AccountID ,@balance= a.Balance from CustomerLoans cl
+					inner join
+					Accounts a on cl.AccountID = a.AccountID
+					where cl.CustLoanID = @CustLoanID
+
+					declare @eachAmount decimal(18,2) = (select Amount from CustomerLoanInstallments where InstallmentNumber = @InstallmentNumber)
+					if (@balance >= @eachAmount)
+						begin
+							update Accounts set Balance -= @eachAmount where AccountID = @accountID
+							
+							insert into Transactions(AccountID,Amount,TransactionType,TransactionDate,
+							ExchangeRateID,CommissionAmount,Profit,IPAddress)
+							values(@AccountID,@eachAmount,'Pay Loan',getdate(),null,null,null,null)
+						
+							update CustomerLoanInstallments set PaidAmount = @eachAmount , PaidDate = getdate(),Status = 'Paid',Description = 'قسط وام پرداخت شد'
+							where CustLoanID = @CustLoanID and InstallmentNumber = @InstallmentNumber
+		commit
+							select 'قسط مورد نظر با موفقیت پرداخت شد' as Status
+						end
+					else 
+						begin
+							select 'موجودی کافی نمی باشد' as ErrMassage
+							rollback
+							return
+						end
+				end
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as errMassage
+	end catch
+
+end
+GO
