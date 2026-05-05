@@ -11,21 +11,6 @@ as begin
 	return (@Amount * @CommisionRate)/100
 end
 go
-
--- =============================================
--- محاسبه مبلغ هر قسط وام
--- ورودی: مبلغ وام + تعداد اقساط + درصد بهره
--- خروجی: مبلغ هر قسط
--- =============================================
-create function fn_GetInstallmentAmount(@Amount decimal(18,2),@InstallmentCount int,@IntrestLoan decimal(5,2))
-returns decimal(18,2)
-as begin
-	declare @intrest decimal(18,2) = (select dbo.fn_CalcCommision(@Amount,@IntrestLoan))
-	If @InstallmentCount = 0 return 0
-	return (@Amount + @intrest) / @InstallmentCount 
-end
-go
-
 -- =============================================
 -- محاسبه سن دقیق از تاریخ تولد
 -- ورودی: تاریخ تولد
@@ -138,23 +123,42 @@ end
 go
 
 -- =============================================
--- مجموع وام‌های فعال یک مشتری
--- ورودی: شناسه مشتری
--- خروجی: جمع مبالغ وام‌های فعال
+-- دریافت مجموع وام‌های فعال یک مشتری تفکیک‌شده بر اساس ارز
+-- اعتبارسنجی وجود مشتری و بازگرداندن پیام مناسب
+-- خروجی: جدول شامل مجموع وام دلاری، تومانی، یورویی و پیام وضعیت
 -- =============================================
-create function fn_GetCustomerTotalLoan(@CustomerID int)
-returns decimal(18,2)
-as begin
-	return(
-		select sum(cl.AmountLoan) 
-		from 
-		CustomerLoans cl
-		inner join
-		Accounts a on cl.AccountID = a.AccountID
-		where a.CustomerID = @CustomerID and cl.Status = 'Active'
-	)
+create or alter function fn_GetCustomerTotalLoan(@CustomerID int)
+returns @Result table (
+    TotalLoanUSD decimal(18,2),
+    TotalLoanIRR decimal(18,2),
+    TotalLoanEUR decimal(18,2),
+    Message nvarchar(100)
+)
+as
+begin
+    -- چک کن مشتری وجود داره
+    if not exists (select 1 from Accounts where CustomerID = @CustomerID)
+    begin
+        insert into @Result (TotalLoanUSD, TotalLoanIRR, TotalLoanEUR, Message)
+        values (0, 0, 0, N'مشتری با این شناسه یافت نشد');
+        return;
+    end
+    
+    -- اگه وجود داشت، وام‌هاش رو برگردون
+    insert into @Result (TotalLoanUSD, TotalLoanIRR, TotalLoanEUR, Message)
+    select 
+        isnull(sum(case when a.Currency = 'USD' then cl.AmountLoan else 0 end), 0),
+        isnull(sum(case when a.Currency = 'IRR' then cl.AmountLoan else 0 end), 0),
+        isnull(sum(case when a.Currency = 'EUR' then cl.AmountLoan else 0 end), 0),
+        N'موفقیت‌آمیز'
+    from 
+        CustomerLoans cl
+    inner join Accounts a on cl.AccountID = a.AccountID
+    where a.CustomerID = @CustomerID and cl.Status = 'Active';
+    
+    return;
 end
-go
+GO
 
 -- =============================================
 -- تعداد اعلان‌های نخوانده یک کاربر
@@ -199,35 +203,6 @@ as begin
 	return @res
 end
 go
-
--- =============================================
--- رتبه‌بندی مشتری (طلایی/نقره‌ای/برنزی/عادی)
--- بر اساس مجموع تراکنش‌ها
--- ورودی: شناسه مشتری
--- خروجی: عنوان رتبه
--- =============================================
-create function fn_GetCustomerRank(@CustomerID int)
-returns nvarchar(20)
-as begin
-	declare @rank int
-	declare @res nvarchar(20) = 'عضو عادی'
-	;with cte as(
-		select
-		a.CustomerID,
-		sum(t.Amount) as totalAmount,
-		row_number() over (order by sum(t.Amount) desc) as RankNum
-		from
-		Transactions t inner join Accounts a on t.AccountID = a.AccountID
-		GROUP by a.CustomerID
-	)
-	select @rank = RankNum from cte where cte.CustomerID = @CustomerID
-	if @rank between 1 and 3 set @res = 'عضو طلایی'
-	if @rank between 4 and 6 set @res = 'عضو نقره ای'
-	if @rank between 7 and 10 set @res = 'عضو برنزی'
-	return @res
-end
-go
-
 -- =============================================
 -- پراستفاده‌ترین ارز یک مشتری (ناتمام)
 -- ورودی: شناسه مشتری
@@ -284,43 +259,70 @@ as return(
 	NationalCode like '%' + @SearchTerm + '%'
 )
 go
-------------------------------------------------------آپدیت فانکشن مجموع وام های مشتری بر اساس نوع ارز
 -- =============================================
--- دریافت مجموع وام‌های فعال یک مشتری تفکیک‌شده بر اساس ارز
--- اعتبارسنجی وجود مشتری و بازگرداندن پیام مناسب
--- خروجی: جدول شامل مجموع وام دلاری، تومانی، یورویی و پیام وضعیت
+-- محاسبه مجموع موجودی کل حساب‌های یک مشتری به تومان (IRR)
+-- تبدیل خودکار موجودی ارزهای دیگر با استفاده از آخرین نرخ روز
+-- ورودی: شناسه مشتری
+-- خروجی: جمع کل موجودی به تومان
 -- =============================================
-drop function if exists [dbo].[fn_GetCustomerTotalLoan]
+create function fn_GetTotalBalance (@CustomerID int)
+returns decimal(18,2)
+as begin
 
-create or alter function fn_GetCustomerTotalLoan(@CustomerID int)
-returns @Result table (
-    TotalLoanUSD decimal(18,2),
-    TotalLoanIRR decimal(18,2),
-    TotalLoanEUR decimal(18,2),
-    Message nvarchar(100)
-)
-as
-begin
-    -- چک کن مشتری وجود داره
-    if not exists (select 1 from Accounts where CustomerID = @CustomerID)
-    begin
-        insert into @Result (TotalLoanUSD, TotalLoanIRR, TotalLoanEUR, Message)
-        values (0, 0, 0, N'مشتری با این شناسه یافت نشد');
-        return;
-    end
-    
-    -- اگه وجود داشت، وام‌هاش رو برگردون
-    insert into @Result (TotalLoanUSD, TotalLoanIRR, TotalLoanEUR, Message)
-    select 
-        isnull(sum(case when a.Currency = 'USD' then cl.AmountLoan else 0 end), 0),
-        isnull(sum(case when a.Currency = 'IRR' then cl.AmountLoan else 0 end), 0),
-        isnull(sum(case when a.Currency = 'EUR' then cl.AmountLoan else 0 end), 0),
-        N'موفقیت‌آمیز'
-    from 
-        CustomerLoans cl
-    inner join Accounts a on cl.AccountID = a.AccountID
-    where a.CustomerID = @CustomerID and cl.Status = 'Active';
-    
-    return;
+	declare @res decimal(18,2)
+
+	select @res = sum(
+		case
+			when a.Currency = 'irr' then a.Balance
+			else a.Balance * isnull(dbo.fn_GetExchangeRate(a.Currency,'irr'),0) end
+		
+	)
+	from Accounts a where CustomerID = @CustomerID
+
+return @res
+end
+go
+
+-- =============================================
+-- تعیین رتبه مشتری بر اساس مجموع موجودی کل (به تومان)
+-- رتبه‌بندی: طلایی (۱ تا ۳)، نقره‌ای (۴ تا ۶)، برنزی (۷ تا ۱۰)، عادی (بقیه)
+-- ورودی: شناسه مشتری
+-- خروجی: عنوان رتبه به فارسی
+-- =============================================
+create or alter function [dbo].[fn_GetCustomerRank](@CustomerID int)
+returns nvarchar(20)
+as begin
+	declare @rank int
+	declare @res nvarchar(20) = 'عضو عادی'
+	;with cte as(
+		select
+		a.CustomerID,
+		dbo.fn_GetTotalBalance(@CustomerID) as T,
+		row_number() over (order by dbo.fn_GetTotalBalance(@CustomerID) desc) as RankNum
+		from
+		Transactions t inner join Accounts a on t.AccountID = a.AccountID
+		GROUP by a.CustomerID
+	)
+	select @rank = RankNum from cte where cte.CustomerID = @CustomerID
+	if @rank between 1 and 3 set @res = 'عضو طلایی'
+	if @rank between 4 and 6 set @res = 'عضو نقره ای'
+	if @rank between 7 and 10 set @res = 'عضو برنزی'
+	return @res
+	
+end
+GO
+
+-- =============================================
+-- محاسبه مبلغ هر قسط وام (با احتساب سود)
+-- فرمول: (مبلغ وام + سود) / تعداد اقساط
+-- ورودی: مبلغ وام، تعداد اقساط، درصد سود
+-- خروجی: مبلغ هر قسط
+-- =============================================
+create or alter function [dbo].[fn_GetInstallmentAmount](@Amount decimal(18,2),@InstallmentCount int,@IntrestLoan decimal(5,2))
+returns decimal(18,2)
+as begin
+	declare @intrest decimal(18,2) = (select dbo.fn_CalcLoanIntrest(@Amount,@IntrestLoan))
+	If @InstallmentCount = 0 return 0
+	return (@Amount + @intrest) / @InstallmentCount 
 end
 GO
